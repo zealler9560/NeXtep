@@ -103,14 +103,31 @@ class WorkspaceSwapAnimatorTest {
             view.layout(0, 0, 200, 150)
             val image = Bitmap.createBitmap(200, 150, Bitmap.Config.ARGB_8888)
             view.draw(android.graphics.Canvas(image))
+            // Before the wallpaper is captured, cards and covers stay opaque over the stationary tasks.
             assertEquals(theme.card, image.getPixel(16, 16))
             assertEquals(theme.opaquePanel, image.getPixel(130, 60))
             val live = io.github.lujinxin.nextep.display.TaskSwitcherView(context, 0).apply { setAppearance(theme) }
-            assertEquals(theme.card, (live.background as android.graphics.drawable.GradientDrawable).color!!.defaultColor)
+            assertEquals(theme.slotCard, (live.background as android.graphics.drawable.GradientDrawable).color!!.defaultColor)
             // The plus badge is present in the moving card, not only after the fade.
             val centre = image.getPixel(40, 70)
             assertNotEquals(theme.card, centre)
             assertTrue(android.graphics.Color.alpha(centre) == 255)
+            // With the frosted backdrop, covers show it and the empty card is the live slot's faint tone over it.
+            val backdrop = android.graphics.Color.RED
+            val frosted = SwapPreviewView(context, listOf(WorkspaceSwapAnimator.Frame(null, card, card, empty = true)),
+                listOf(cover), theme, android.graphics.drawable.ColorDrawable(backdrop))
+            frosted.progress = 1f
+            frosted.measure(View.MeasureSpec.makeMeasureSpec(200, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(150, View.MeasureSpec.EXACTLY))
+            frosted.layout(0, 0, 200, 150)
+            image.eraseColor(0)
+            frosted.draw(android.graphics.Canvas(image))
+            assertEquals(backdrop, image.getPixel(130, 60))
+            val expected = androidx.core.graphics.ColorUtils.compositeColors(theme.slotCard, backdrop)
+            val drawn = image.getPixel(16, 16)
+            for (shift in intArrayOf(0, 8, 16, 24)) {
+                assertTrue(kotlin.math.abs((expected ushr shift and 0xFF) - (drawn ushr shift and 0xFF)) <= 2)
+            }
         }
     }
 }

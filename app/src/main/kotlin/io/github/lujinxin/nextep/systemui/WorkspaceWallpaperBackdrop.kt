@@ -174,8 +174,8 @@ private class WallpaperCropDrawable : Drawable() {
             // Strength changes update only the effect, retaining the recorded wallpaper.
             if (blurChanged || newNode || densityChanged) {
                 val fraction = strength / 100f
-                // 24 dp at the default strength: the wallpaper reads as soft colour fields under text.
-                val radius = 96f * fraction * fraction * density
+                // 30 dp at the default strength: the wallpaper reads as soft colour fields under text.
+                val radius = 120f * fraction * fraction * density
                 node.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
                     radius.coerceAtLeast(0.01f), radius.coerceAtLeast(0.01f), android.graphics.Shader.TileMode.CLAMP,
                 ))

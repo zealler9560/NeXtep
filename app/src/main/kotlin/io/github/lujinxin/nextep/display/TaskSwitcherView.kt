@@ -73,7 +73,7 @@ class TaskSwitcherView(
     init {
         background = GradientDrawable().apply {
             cornerRadius = dp(14).toFloat()
-            setColor(appearance.card)
+            setColor(appearance.slotCard)
             setStroke(dp(1), appearance.outline)
         }
         clipToOutline = true
@@ -458,7 +458,7 @@ class TaskSwitcherView(
 
     internal fun setAppearance(value: WorkbenchAppearance) {
         appearance = value
-        (background as? GradientDrawable)?.apply { setColor(value.card); setStroke(dp(1), value.outline) }
+        (background as? GradientDrawable)?.apply { setColor(value.slotCard); setStroke(dp(1), value.outline) }
         statusView.background = value.emptyBadge(resources.displayMetrics.density, badgeHighlighted)
     }
 

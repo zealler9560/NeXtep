@@ -10,14 +10,16 @@ internal enum class WorkbenchAppearance(
 ) {
     // The panel tone is a translucent layer over the blurred desktop wallpaper; dark text
     // stays readable over a dark wallpaper at less coverage than white text over a light one.
-    DARK(0xB30C131F.toInt(), 0xB3172230.toInt(), 0xFF222E3D.toInt(),
+    DARK(0x660C131F.toInt(), 0x66172230.toInt(), 0xFF222E3D.toInt(),
         Color.WHITE, 0xFFAFBAC9.toInt(), 0xFF3A485A.toInt()),
-    LIGHT(0x99EDF1F7.toInt(), 0x99DDE5F0.toInt(), 0xFFF9FBFE.toInt(),
+    LIGHT(0x4DEDF1F7.toInt(), 0x4DDDE5F0.toInt(), 0xFFF9FBFE.toInt(),
         0xFF182333.toInt(), 0xFF526176.toInt(), 0xFFC2CCDB.toInt());
 
     val accent: Int get() = if (this == DARK) 0xFF8CCBEA.toInt() else 0xFF245D80.toInt()
     /** Opaque panel tone for sheets, and for covers until the wallpaper has been captured. */
     val opaquePanel: Int get() = panelEnd or 0xFF000000.toInt()
+    /** A slot's card: a faint card tone, so an empty slot shows the frosted panel through it. */
+    val slotCard: Int get() = (card and 0x00FFFFFF) or 0x40000000
     /** Empty-slot badge: a faint disc of the outline tone with a secondary-coloured plus. */
     val badgeFill: Int get() = (outline and 0x00FFFFFF) or (if (this == DARK) 0x8A000000.toInt() else 0x7A000000.toInt())
     val badgeHighlight: Int get() = (accent and 0x00FFFFFF) or 0x55000000

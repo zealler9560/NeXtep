@@ -227,6 +227,7 @@ internal class SwapPreviewView(
     // fade into the real windows changes nothing visible in either theme.
     private val coverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = appearance.opaquePanel }
     private val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = appearance.card }
+    private val emptyCardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = appearance.slotCard }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = appearance.outline
         style = Paint.Style.STROKE
@@ -266,7 +267,12 @@ internal class SwapPreviewView(
         clipPath.reset()
         clipPath.addRoundRect(destination, cornerRadius, cornerRadius, android.graphics.Path.Direction.CW)
         canvas.clipPath(clipPath)
-        canvas.drawRoundRect(destination, cornerRadius, cornerRadius, cardPaint)
+        if (empty && backdrop != null) {
+            // An empty slot is a faint card over the frosted panel, wherever it travels.
+            backdrop.setBounds(0, 0, width, height)
+            backdrop.draw(canvas)
+            canvas.drawRoundRect(destination, cornerRadius, cornerRadius, emptyCardPaint)
+        } else canvas.drawRoundRect(destination, cornerRadius, cornerRadius, cardPaint)
         if (empty) {
             val left = (destination.centerX() - badgeSize / 2f).toInt()
             val top = (destination.centerY() - badgeSize / 2f).toInt()
