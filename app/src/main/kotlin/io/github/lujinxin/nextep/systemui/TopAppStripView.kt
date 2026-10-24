@@ -448,10 +448,6 @@ class TopAppStripView(
             isClickable = true
             isLongClickable = true
             setPadding(dp(5), 0, dp(5), dp(WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP))
-            // Adaptive icons keep part of their canvas as transparent safe zone (a quarter on
-            // ColorOS); zoom the view so the visible glyph is about 38 dp inside its 44 dp box.
-            icon.scaleX = APP_ICON_ZOOM
-            icon.scaleY = APP_ICON_ZOOM
             addView(
                 icon,
                 LinearLayout.LayoutParams(dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP), dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP)),
@@ -529,24 +525,55 @@ class TopAppStripView(
     /**
      * Each entry re-records the strip (its window is released on exit), and an adaptive or
      * icon-pack drawable rendered itself in software for ~6 ms per icon on the main thread.
-     * Draw it once here, off the main thread, at the zoomed on-screen size.
+     * Draw it once here, off the main thread. The transparent margin around the glyph differs
+     * (a quarter of the canvas on ColorOS 17, almost none on ColorOS 16 or in icon packs), so
+     * the visible glyph, not the canvas, is fitted to [APP_GLYPH_SIZE_DP] inside the icon box.
      */
     private fun rasterized(icon: android.graphics.drawable.Drawable): android.graphics.drawable.Drawable = runCatching {
-        val size = (dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP) * APP_ICON_ZOOM).toInt().coerceAtLeast(1)
+        val box = dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP).coerceAtLeast(1)
         // The drawable is freshly loaded for this refresh and not attached anywhere yet.
-        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-        icon.setBounds(0, 0, size, size)
+        val bitmap = android.graphics.Bitmap.createBitmap(box, box, android.graphics.Bitmap.Config.ARGB_8888)
+        icon.setBounds(0, 0, box, box)
         icon.draw(android.graphics.Canvas(bitmap))
+        visibleGlyphBounds(bitmap)?.let { glyph ->
+            // Draw again, scaled about the glyph's centre, rather than resample the first pass.
+            val scale = dp(APP_GLYPH_SIZE_DP).toFloat() / maxOf(glyph.width(), glyph.height())
+            val left = box / 2f - glyph.exactCenterX() * scale
+            val top = box / 2f - glyph.exactCenterY() * scale
+            bitmap.eraseColor(Color.TRANSPARENT)
+            icon.setBounds(left.toInt(), top.toInt(), (left + box * scale).toInt(), (top + box * scale).toInt())
+            icon.draw(android.graphics.Canvas(bitmap))
+        }
         android.graphics.drawable.BitmapDrawable(resources,
             bitmap.copy(android.graphics.Bitmap.Config.HARDWARE, false) ?: bitmap)
     }.getOrDefault(icon)
 
     private companion object {
         const val APP_TILE_WIDTH_DP = 60
-        const val APP_ICON_ZOOM = 1.15f
+        const val APP_GLYPH_SIZE_DP = 38
         const val SCENE_BUTTON_SIZE_DP = 36
         const val SCENE_BUTTON_GAP_DP = 6
         const val REFRESH_INTERVAL_MS = 15_000L
         const val TOUCHABLE_INSETS_REGION = 3
     }
+}
+
+/** The box around the pixels an icon visibly paints (faint shadow ignored); null when it paints nothing. */
+internal fun visibleGlyphBounds(bitmap: android.graphics.Bitmap): android.graphics.Rect? {
+    val width = bitmap.width
+    val pixels = IntArray(width * bitmap.height).also { bitmap.getPixels(it, 0, width, 0, 0, width, bitmap.height) }
+    var left = width
+    var top = bitmap.height
+    var right = -1
+    var bottom = -1
+    pixels.forEachIndexed { index, pixel ->
+        if (pixel ushr 24 < 0x20) return@forEachIndexed
+        val x = index % width
+        val y = index / width
+        if (x < left) left = x
+        if (x > right) right = x
+        if (y < top) top = y
+        if (y > bottom) bottom = y
+    }
+    return if (right < 0) null else android.graphics.Rect(left, top, right + 1, bottom + 1)
 }
