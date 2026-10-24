@@ -160,6 +160,13 @@ object SettingsScreen {
             }, matchWidth().apply { topMargin = dp(activity, 12) })
             addView(UpdateSection.create(activity), matchWidth())
             addView(sectionDescription(activity, activity.getString(R.string.about_based_on)), matchWidth())
+            addView(MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = activity.getString(R.string.about_qq_group)
+                minHeight = dp(activity, 48)
+                insetTop = dp(activity, 4)
+                insetBottom = dp(activity, 4)
+                setOnClickListener { openQqGroup(activity) }
+            }, matchWidth().apply { topMargin = dp(activity, 12) })
             addView(sectionDescription(activity, activity.getString(R.string.about_donate)),
                 matchWidth().apply { topMargin = dp(activity, 12) })
             addView(ImageView(activity).apply {
@@ -171,6 +178,19 @@ object SettingsScreen {
                 topMargin = dp(activity, 8)
             })
         })
+    }
+
+    /** QQ opens the group itself when it takes the share link; otherwise the browser page offers to open QQ. */
+    private fun openQqGroup(activity: AppCompatActivity) {
+        val view = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(QQ_GROUP_URL))
+        for (intent in listOf(android.content.Intent(view).setPackage("com.tencent.mobileqq"), view)) {
+            try {
+                activity.startActivity(intent)
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+            }
+        }
+        Toast.makeText(activity, activity.getString(R.string.browser_unavailable), Toast.LENGTH_LONG).show()
     }
 
     private fun groupTitle(activity: AppCompatActivity, value: String) = sectionTitle(activity, value).apply {
@@ -484,4 +504,6 @@ object SettingsScreen {
     )
 
     private const val MAX_TOP_APPS = 10
+    /** The 格窗交流群 share link (group 751247521). */
+    private const val QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=aR7P8LcImQYxngklpQ8M1bwzYn1Hnjh07fL%2F3N5qHnH9nKZAq%2B4VAaAniFqCVm3X&busi_data=eyJncm91cENvZGUiOiI3NTEyNDc1MjEiLCJ0b2tlbiI6InIvb1hMNTZiaWJ6WVhrajI3U1NTV1RROW9TeTNFUmpkejdIaitqNVFXQTFWNGlUU0JCVWhwM0QydDhMbmNtUk4iLCJ1aW4iOiIyNzU0MTE5MjkifQ%3D%3D&data=bsQls4gmP0EoHAFS89fiXTtwiAJULIASKHHTcbLpE6bYFgX7TtubfocaWiegnP_kAVhJ0PFqbayxD-8jJjF-oA&svctype=4&tempid=h5_group_info"
 }

@@ -97,6 +97,7 @@
     <string name="open_settings">格子窓 の設定を開く</string>
     <string name="apps_none_available">起動できるアプリがありません</string>
     <string name="about_based_on">lujinxin の NeXtep を改変 · Apache License 2.0</string>
+    <string name="about_qq_group">QQ グループ「格窗交流群」に参加</string>
     <string name="about_donate">Panes が役に立ったら、WeChat Pay で作者にコーヒーを一杯どうぞ。</string>
     <string name="about_donate_description">WeChat Pay 寄付用コード</string>
     <string name="section_layout">レイアウト</string>

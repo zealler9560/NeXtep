@@ -97,6 +97,7 @@
     <string name="open_settings">開啟 格窗 設定</string>
     <string name="apps_none_available">沒有可啟動的 App</string>
     <string name="about_based_on">基於 lujinxin 的 NeXtep 修改 · Apache License 2.0</string>
+    <string name="about_qq_group">加入 QQ 群「格窗交流群」</string>
     <string name="about_donate">如果格窗幫到了你，可以用微信掃碼請作者喝杯咖啡。</string>
     <string name="about_donate_description">微信讚賞收款碼</string>
     <string name="section_layout">版面</string>
