@@ -174,7 +174,8 @@ private class WallpaperCropDrawable : Drawable() {
             // Strength changes update only the effect, retaining the recorded wallpaper.
             if (blurChanged || newNode || densityChanged) {
                 val fraction = strength / 100f
-                val radius = 32f * fraction * fraction * density
+                // 24 dp at the default strength: the wallpaper reads as soft colour fields under text.
+                val radius = 96f * fraction * fraction * density
                 node.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
                     radius.coerceAtLeast(0.01f), radius.coerceAtLeast(0.01f), android.graphics.Shader.TileMode.CLAMP,
                 ))
@@ -209,7 +210,7 @@ private class WallpaperCropDrawable : Drawable() {
             sourceRect.set(left, top, right, bottom)
             canvas.drawBitmap(source, sourceRect, bounds, paint)
         }
-        drawTint(canvas)
+        // The panel tone drawn over this layer tints the captured wallpaper.
     }
 
     private fun drawTint(canvas: Canvas) {

@@ -48,7 +48,7 @@ class NeXtepWindowController(
     private var slotWindows: List<VirtualDisplaySlot> = emptyList()
     private var slotBackgroundSwipeEnabled = true
     private var frostStrength = 50
-    private val swapAnimator = WorkspaceSwapAnimator(context) { appearance }
+    private val swapAnimator = WorkspaceSwapAnimator(context, backdrop = { panelBackdrop(0, 0) }) { appearance }
     private var contentTarget: SlotTaskCoordinator.ContentExchange? = null
     private var contentOriginSide = SidebarSide.RIGHT
     private var contentLayoutChanging = false
@@ -797,6 +797,7 @@ class NeXtepWindowController(
             configureWindow(record, params, geometry)
             windowManager.updateViewLayout(record.view, params)
         }
+        refreshMainFrame(geometry)
         topAppStrip?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft, geometry.controlAtBottom)
     }
 
@@ -999,7 +1000,7 @@ class NeXtepWindowController(
                     setStroke(dp(2).toInt(), appearance.accent)
                     cornerRadius = dp(14)
                 }
-            } else mainFrame()
+            } else mainFrame(geometry())
     }
 
     private fun dropInternalPayload(
@@ -1156,6 +1157,7 @@ class NeXtepWindowController(
             if (view.background !== background) view.background = background
         }
         applySidebarBackdrop(geometry)
+        refreshMainFrame(geometry)
     }
 
     private fun applySidebarBackdrop(geometry: WorkspaceGeometry) {
@@ -1169,14 +1171,27 @@ class NeXtepWindowController(
     private fun logicalSidebarSide(geometry: WorkspaceGeometry): SidebarSide =
         geometry.panelSidebarSide
 
-    private fun mainFrame() = WorkbenchFrameDrawable(appearance.panelEnd or 0xFF000000.toInt(),
-        appearance.accent, dp(14), dp(1).coerceAtLeast(1f))
+    /** The panels' frosted wallpaper and tone as seen at [left], [top] on screen; null before a capture. */
+    private fun panelBackdrop(left: Int, top: Int): android.graphics.drawable.Drawable? = wallpaperBitmap?.let {
+        android.graphics.drawable.LayerDrawable(arrayOf(
+            WorkspaceWallpaperBackdrop.crop(it, left, top, frostStrength),
+            android.graphics.drawable.ColorDrawable(appearance.panelEnd),
+        ))
+    }
+
+    private fun mainFrame(geometry: WorkspaceGeometry) = WorkbenchFrameDrawable(appearance.opaquePanel,
+        appearance.accent, dp(14), dp(1).coerceAtLeast(1f), panelBackdrop(geometry.contentLeft, geometry.contentTop))
+
+    /** Recut the main pane's corners after the wallpaper frame or the pane itself changed. */
+    private fun refreshMainFrame(geometry: WorkspaceGeometry) {
+        contentHighlightView?.takeIf { it.background is WorkbenchFrameDrawable }?.background = mainFrame(geometry)
+    }
 
     private fun applyAppearance() {
         topAppStrip?.setAppearance(appearance)
         sidebarView?.background = appearance.background()
         slotWindows.forEach { it.view.setAppearance(appearance) }
-        contentHighlightView?.background = mainFrame()
+        contentHighlightView?.background = mainFrame(geometry())
     }
 
     private fun setCaptureAllowed(allowed: Boolean) {

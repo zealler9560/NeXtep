@@ -8,13 +8,15 @@ internal enum class WorkbenchAppearance(
     val panel: Int, val panelEnd: Int, val card: Int,
     val text: Int, val secondary: Int, val outline: Int,
 ) {
-    DARK(0xF20C131F.toInt(), 0xF2172230.toInt(), 0xFF222E3D.toInt(),
+    // The panel tone is a translucent layer over the blurred desktop wallpaper; dark text
+    // stays readable over a dark wallpaper at less coverage than white text over a light one.
+    DARK(0xB30C131F.toInt(), 0xB3172230.toInt(), 0xFF222E3D.toInt(),
         Color.WHITE, 0xFFAFBAC9.toInt(), 0xFF3A485A.toInt()),
-    LIGHT(0xF2EDF1F7.toInt(), 0xF2DDE5F0.toInt(), 0xFFF9FBFE.toInt(),
+    LIGHT(0x99EDF1F7.toInt(), 0x99DDE5F0.toInt(), 0xFFF9FBFE.toInt(),
         0xFF182333.toInt(), 0xFF526176.toInt(), 0xFFC2CCDB.toInt());
 
     val accent: Int get() = if (this == DARK) 0xFF8CCBEA.toInt() else 0xFF245D80.toInt()
-    /** Opaque panel tone for transition covers; the real panels add a frosted wallpaper under it. */
+    /** Opaque panel tone for sheets, and for covers until the wallpaper has been captured. */
     val opaquePanel: Int get() = panelEnd or 0xFF000000.toInt()
     /** Empty-slot badge: a faint disc of the outline tone with a secondary-coloured plus. */
     val badgeFill: Int get() = (outline and 0x00FFFFFF) or (if (this == DARK) 0x8A000000.toInt() else 0x7A000000.toInt())
@@ -46,10 +48,12 @@ internal enum class WorkbenchAppearance(
     }
 }
 
-/** Round only our visual frame; never overwrite a task leash's native corner state. */
+/** Round only our visual frame; never overwrite a task leash's native corner state.
+ * The corners show [maskFill] (the panels' frosted backdrop) when given, else [maskColor]. */
 internal class WorkbenchFrameDrawable(
     private val maskColor: Int, private val borderColor: Int,
     private val radius: Float, private val stroke: Float,
+    private val maskFill: android.graphics.drawable.Drawable? = null,
 ) : android.graphics.drawable.Drawable() {
     private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
     private val mask = android.graphics.Path().apply { fillType = android.graphics.Path.FillType.EVEN_ODD }
@@ -66,10 +70,19 @@ internal class WorkbenchFrameDrawable(
     }
 
     override fun draw(canvas: android.graphics.Canvas) {
-        paint.style = android.graphics.Paint.Style.FILL
-        paint.color = maskColor
-        paint.alpha = (android.graphics.Color.alpha(maskColor) * drawableAlpha / 255)
-        canvas.drawPath(mask, paint)
+        if (maskFill != null) {
+            val save = canvas.save()
+            canvas.clipPath(mask)
+            maskFill.bounds = bounds
+            maskFill.alpha = drawableAlpha
+            maskFill.draw(canvas)
+            canvas.restoreToCount(save)
+        } else {
+            paint.style = android.graphics.Paint.Style.FILL
+            paint.color = maskColor
+            paint.alpha = (android.graphics.Color.alpha(maskColor) * drawableAlpha / 255)
+            canvas.drawPath(mask, paint)
+        }
         paint.color = borderColor
         paint.alpha = (android.graphics.Color.alpha(borderColor) * drawableAlpha / 255)
         paint.style = android.graphics.Paint.Style.STROKE

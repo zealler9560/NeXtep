@@ -18,7 +18,12 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 /** Animate disposable previews first; perform the display move while the final
  * preview covers relayout, then fade to the live buffers. Nothing retains an app
  * frame after the transition ends or the workspace is hidden/locked. */
-internal class WorkspaceSwapAnimator(private val context: Context, private val appearance: () -> WorkbenchAppearance) {
+internal class WorkspaceSwapAnimator(
+    private val context: Context,
+    /** The panels' frosted wallpaper over the whole screen; null until it has been captured. */
+    private val backdrop: () -> android.graphics.drawable.Drawable? = { null },
+    private val appearance: () -> WorkbenchAppearance,
+) {
     /** A frame without a bitmap draws as a card; an empty one also carries the plus badge.
      * A [topFill] frame fills its width from the top, so a portrait page shows its player in a wide pane. */
     data class Frame(val bitmap: Bitmap?, val from: RectF, var to: RectF, val empty: Boolean = false,
@@ -100,7 +105,7 @@ internal class WorkspaceSwapAnimator(private val context: Context, private val a
             frames.forEach { it.bitmap?.recycle() }
             return false
         }
-        val preview = SwapPreviewView(context, frames, covers, appearance())
+        val preview = SwapPreviewView(context, frames, covers, appearance(), backdrop())
         val params = WindowManager.LayoutParams(
             screenWidth, screenHeight, windowType,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -214,6 +219,7 @@ internal class SwapPreviewView(
     var frames: List<WorkspaceSwapAnimator.Frame>,
     var covers: List<RectF>,
     appearance: WorkbenchAppearance,
+    private val backdrop: android.graphics.drawable.Drawable? = null,
 ) : View(context) {
     var progress = 0f
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -238,7 +244,16 @@ internal class SwapPreviewView(
         if (released) return
         // The live tasks stay put until the compositor move. Cover their old
         // positions so a shrinking preview cannot expose a second stationary app.
-        covers.forEach { canvas.drawRoundRect(it, cornerRadius, cornerRadius, coverPaint) }
+        covers.forEach { cover ->
+            if (backdrop == null) return@forEach canvas.drawRoundRect(cover, cornerRadius, cornerRadius, coverPaint)
+            val save = canvas.save()
+            clipPath.reset()
+            clipPath.addRoundRect(cover, cornerRadius, cornerRadius, android.graphics.Path.Direction.CW)
+            canvas.clipPath(clipPath)
+            backdrop.setBounds(0, 0, width, height)
+            backdrop.draw(canvas)
+            canvas.restoreToCount(save)
+        }
         frames.forEach { drawFrame(canvas, it) }
     }
 
