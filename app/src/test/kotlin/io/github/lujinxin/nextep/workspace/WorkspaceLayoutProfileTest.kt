@@ -38,7 +38,7 @@ class WorkspaceLayoutProfileTest {
                                 val railCanvas = profile.canvas(i)
                                 assertEquals(slot.width.toDouble() / slot.height, railCanvas.width.toDouble() / railCanvas.height, 0.01)
                             }
-                            val railHeight = profile.slots.filterIndexed { i, _ -> i != wideIndex }.sumOf { it.height } + profile.gapPixels * 2
+                            val railHeight = profile.slots.filterIndexed { i, _ -> i != wideIndex }.sumOf { it.height } + profile.slotGapPixels * 2
                             assertTrue(railHeight <= g.sidebarLogicalHeight)
                             // Main window and rail cards share one aspect; the main app's shortened canvas
                             // fills the main window at the width-fit scale, so swaps keep the layout.
@@ -292,7 +292,7 @@ class WorkspaceLayoutProfileTest {
         val geometry = WorkspaceGeometry(1080, 2354, 474, 218, SidebarSide.RIGHT)
         val old = legacyFourSlotRecord(WorkspaceLayoutProfile(geometry, 480, 3), "6").joinToString(",")
         val migrated = checkNotNull(WorkspaceLayoutProfile.decode(old))
-        assertEquals(474, migrated.geometry.topHeight)
+        assertEquals(505, migrated.geometry.topHeight)
         assertEquals(1080, migrated.geometry.screenWidth)
         assertEquals(2354, migrated.geometry.screenHeight)
         assertEquals(480, migrated.densityDpi)
@@ -328,13 +328,13 @@ class WorkspaceLayoutProfileTest {
 
     @Test fun fourCardsFillTheRailWithoutTallInternalLetterboxes() {
         val profile = WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets())
-        assertEquals(530, profile.geometry.topHeight)
-        assertEquals(244, profile.geometry.sidebarWidth)
+        assertEquals(561, profile.geometry.topHeight)
+        assertEquals(258, profile.geometry.sidebarWidth)
         profile.slots.forEachIndexed { i, slot ->
             assertTrue(slot.top >= 0)
-            if (i > 0) assertTrue(slot.top >= profile.slots[i - 1].let { it.top + it.height } + profile.gapPixels)
+            if (i > 0) assertTrue(slot.top >= profile.slots[i - 1].let { it.top + it.height } + profile.slotGapPixels)
             assertTrue(kotlin.math.abs(slot.width * profile.canvas.height.toDouble() / profile.canvas.width - slot.height) < 3)
-            assertTrue(slot.height > 520)
+            assertTrue(slot.height > 500)
         }
     }
 
@@ -342,7 +342,7 @@ class WorkspaceLayoutProfileTest {
         val parts = profile.encode().split(',').toMutableList()
         parts[0] = version
         val count = if (profile.wideSlotIndex == null) 4 else 3
-        val usable = profile.geometry.sidebarLogicalHeight - profile.gapPixels * (count - 1)
+        val usable = profile.geometry.sidebarLogicalHeight - profile.slotGapPixels * (count - 1)
         val base = usable / count
         val extra = usable % count
         var rail = 0
@@ -350,7 +350,7 @@ class WorkspaceLayoutProfileTest {
             if (index != profile.wideSlotIndex) {
                 parts[20 + index * 3] = (profile.geometry.sidebarWidth - profile.gapPixels).toString()
                 parts[21 + index * 3] = (base + if (rail < extra) 1 else 0).toString()
-                parts[22 + index * 3] = (rail * (base + profile.gapPixels) + minOf(rail, extra)).toString()
+                parts[22 + index * 3] = (rail * (base + profile.slotGapPixels) + minOf(rail, extra)).toString()
                 rail++
             }
         }
@@ -360,11 +360,11 @@ class WorkspaceLayoutProfileTest {
     private fun legacyRecord(profile: WorkspaceLayoutProfile, version: String): MutableList<String> {
         val old = profile.encode().split(',').take(20).toMutableList()
         old[0] = version
-        val usable = profile.geometry.sidebarLogicalHeight - profile.gapPixels * 2
+        val usable = profile.geometry.sidebarLogicalHeight - profile.slotGapPixels * 2
         val base = usable / 3
         val extra = usable % 3
         repeat(3) { index -> old.addAll(listOf(profile.geometry.sidebarWidth - profile.gapPixels,
-            base + if (index < extra) 1 else 0, index * (base + profile.gapPixels) + minOf(index, extra)).map(Int::toString)) }
+            base + if (index < extra) 1 else 0, index * (base + profile.slotGapPixels) + minOf(index, extra)).map(Int::toString)) }
         if (version == "5") old += profile.geometry.displayRotation.toString()
         if (version == "2") {
             old[14] = minOf(profile.geometry.screenWidth, profile.geometry.screenHeight).toString()

@@ -56,7 +56,7 @@ object SettingsScreen {
                     orientation = LinearLayout.VERTICAL
                     addView(groupTitle(activity, activity.getString(R.string.app_strip_title)), matchWidth())
                     fun summary() = activity.getString(R.string.favorite_apps_summary,
-                        repository.topBarSettings().appComponents.size, MAX_TOP_APPS)
+                        repository.topBarSettings().appComponents.size)
                     val editButton = SettingsRowButton.create(activity).apply {
                         text = activity.getString(R.string.favorite_apps_edit)
                         setOnClickListener {
@@ -208,7 +208,7 @@ object SettingsScreen {
         // A saved clone may arrive asynchronously from SystemUI. Keep its order
         // while the unprivileged settings process is still loading the catalogue.
         val selected = settings.appComponents.distinct()
-            .filter { it in appByName || it.contains('|') }.take(MAX_TOP_APPS).toMutableList()
+            .filter { it in appByName || it.contains('|') }.toMutableList()
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             val selectedContainer = LinearLayout(activity).apply {
@@ -246,11 +246,6 @@ object SettingsScreen {
                             isChecked = selected.contains(componentName)
                             contentDescription = if (isChecked) activity.getString(R.string.app_remove, option.label) else activity.getString(R.string.app_add, option.label)
                             setOnCheckedChangeListener { _, enabled ->
-                                if (enabled && selected.size >= MAX_TOP_APPS) {
-                                    isChecked = false
-                                    Toast.makeText(activity, activity.getString(R.string.apps_limit, MAX_TOP_APPS), Toast.LENGTH_SHORT).show()
-                                    return@setOnCheckedChangeListener
-                                }
                                 if (enabled) selected += componentName else selected.remove(componentName)
                                 repository.setTopApps(selected)
                                 render()
@@ -506,7 +501,6 @@ object SettingsScreen {
         LinearLayout.LayoutParams.WRAP_CONTENT,
     )
 
-    private const val MAX_TOP_APPS = 10
     private const val QQ_GROUP_CARD = "mqqapi://card/show_pslcard?src_type=internal&version=1&uin=751247521&card_type=group&source=qrcode"
     /** The 格窗交流群 share link (group 751247521). */
     private const val QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=aR7P8LcImQYxngklpQ8M1bwzYn1Hnjh07fL%2F3N5qHnH9nKZAq%2B4VAaAniFqCVm3X&busi_data=eyJncm91cENvZGUiOiI3NTEyNDc1MjEiLCJ0b2tlbiI6InIvb1hMNTZiaWJ6WVhrajI3U1NTV1RROW9TeTNFUmpkejdIaitqNVFXQTFWNGlUU0JCVWhwM0QydDhMbmNtUk4iLCJ1aW4iOiIyNzU0MTE5MjkifQ%3D%3D&data=bsQls4gmP0EoHAFS89fiXTtwiAJULIASKHHTcbLpE6bYFgX7TtubfocaWiegnP_kAVhJ0PFqbayxD-8jJjF-oA&svctype=4&tempid=h5_group_info"

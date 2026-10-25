@@ -149,12 +149,13 @@ data class WorkspaceGeometry(
             val landscape = screenWidth > screenHeight
             val longSide = if (landscape) availableWidth else availableHeight
             val shortSide = if (landscape) availableHeight else availableWidth
-            val gap = density.toInt().coerceAtLeast(1)
+            val gap = (WorkspaceControlMetrics.RAIL_GAP_DP * density).toInt().coerceAtLeast(1)
+            val slotGap = (WorkspaceControlMetrics.SLOT_GAP_DP * density).toInt().coerceAtLeast(1)
             val count = io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT
             // Solve main and all four preview rectangles together, including gaps.
             // Their canvases share the recorded phone aspect ratio.
             val controlThickness = ((longSide + count * gap * longSide.toDouble() / shortSide -
-                (count - 1) * gap) / (count + 1)).roundToInt()
+                (count - 1) * slotGap) / (count + 1)).roundToInt()
                 .coerceIn(1, (longSide / 2).coerceAtLeast(1))
             val railWidth = proportionalRail(shortSide, longSide, controlThickness)
             return WorkspaceGeometry(

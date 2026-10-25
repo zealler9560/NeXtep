@@ -38,7 +38,7 @@ class FavoriteAppsTest {
         val entries = (0..11).map { TopAppRepository.AppEntry("app$it", "App $it",
             ColorDrawable(Color.BLUE), Intent(), 0) }
         render.invoke(strip, entries)
-        assertEquals(10, row.childCount)
+        assertEquals(12, row.childCount)
         render.invoke(strip, entries.take(3).reversed())
         assertEquals(3, row.childCount)
         assertEquals(listOf("App 2", "App 1", "App 0"), (0 until 3).map { row.getChildAt(it).contentDescription })
@@ -56,11 +56,14 @@ class FavoriteAppsTest {
         val many = (0..14).map { entry("app$it", 100L - it) }
         assertEquals(10, TopAppRepository.arrange(many, listOf("app14")).size)
         assertEquals("app14", TopAppRepository.arrange(many, listOf("app14")).first().key)
+        // Every chosen app shows, past ten; recent apps then add nothing.
+        val twelve = (3..14).map { "app$it" }
+        assertEquals(twelve, TopAppRepository.arrange(many, twelve).map { it.key })
     }
 
-    @Test fun savedSelectionKeepsOrderCapsAtTenAndAllowsAnExplicitEmptyList() {
+    @Test fun savedSelectionKeepsOrderWithoutACapAndAllowsAnExplicitEmptyList() {
         SettingsRepository(context).setTopApps((0..15).map { "app$it" })
-        assertEquals((0..9).map { "app$it" }, SettingsRepository(context).topBarSettings().appComponents)
+        assertEquals((0..15).map { "app$it" }, SettingsRepository(context).topBarSettings().appComponents)
         SettingsRepository(context).setTopApps(listOf("b", "a", "b"))
         assertEquals(listOf("b", "a"), SettingsRepository(context).topBarSettings().appComponents)
         SettingsRepository(context).setTopApps(emptyList())

@@ -41,14 +41,14 @@ class TopAppRepository(context: Context) {
         private const val MAX_VISIBLE_APPS = 10
         private const val USAGE_WINDOW_MS = 7L * 24L * 60L * 60L * 1_000L
 
-        /** Chosen apps in their order, then the rest by last use; apps never used stay out. */
+        /** Every chosen app in its order, then recent apps up to ten in all; apps never used stay out. */
         internal fun arrange(entries: List<AppEntry>, preferredComponents: List<String>): List<AppEntry> {
-            val order = preferredComponents.distinct().take(MAX_VISIBLE_APPS)
+            val order = preferredComponents.distinct()
                 .withIndex().associate { (index, value) -> value to index }
             val chosen = entries.filter { it.key in order }.sortedBy { order.getValue(it.key) }
             val recent = entries.filter { it.key !in order && it.lastTimeUsed > 0L }
                 .sortedWith(compareByDescending<AppEntry> { it.lastTimeUsed }.thenBy { it.label.toString().lowercase() })
-            return (chosen + recent).take(MAX_VISIBLE_APPS)
+            return (chosen + recent).take(maxOf(MAX_VISIBLE_APPS, chosen.size))
         }
     }
 }

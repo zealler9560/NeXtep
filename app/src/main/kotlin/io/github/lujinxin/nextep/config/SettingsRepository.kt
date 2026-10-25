@@ -67,7 +67,7 @@ class SettingsRepository(private val context: Context) {
         preferences.edit()
             .putString(
                 KEY_TOP_APPS,
-                components.distinct().take(MAX_TOP_APPS).joinToString(COMPONENT_SEPARATOR),
+                components.distinct().joinToString(COMPONENT_SEPARATOR),
             )
             .apply()
         notifyTopContentChanged()
@@ -79,6 +79,5 @@ class SettingsRepository(private val context: Context) {
         const val KEY_MANUAL_APP_ORDER = "manual_app_order"
         const val DEFAULT_TOP_TITLE = ""
         const val COMPONENT_SEPARATOR = "\n"
-        const val MAX_TOP_APPS = 10
     }
 }

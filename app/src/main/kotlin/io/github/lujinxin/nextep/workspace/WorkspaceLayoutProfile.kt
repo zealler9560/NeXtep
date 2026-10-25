@@ -26,6 +26,9 @@ data class WorkspaceLayoutProfile(
         require(wideAspect in MIN_WIDE_ASPECT..MAX_WIDE_ASPECT)
     }
 
+    /** Between rail slots; [gapPixels] separates the rail from the main window. */
+    val slotGapPixels: Int get() = (WorkspaceControlMetrics.SLOT_GAP_DP * densityDpi / 160f).toInt().coerceAtLeast(1)
+
     private val leftGeometry = geometry.copy(sidebarSide = SidebarSide.LEFT)
     private val rightGeometry = geometry.copy(sidebarSide = SidebarSide.RIGHT)
     val canvas = SlotGeometry.forRecordedDisplay(geometry.availableWidth, geometry.availableHeight, densityDpi)
@@ -85,7 +88,7 @@ data class WorkspaceLayoutProfile(
             return normal.copy(geometry = g.copy(topHeight = top, sidebarWidth = rail), wideSlotIndex = index, wideAspect = clamped)
         }
         val remaining = long - top
-        val shared = 3.0 * (short - gapPixels) / (4.0 * remaining - 2 * gapPixels)
+        val shared = 3.0 * (short - gapPixels) / (4.0 * remaining - 2 * slotGapPixels)
         val main = (remaining * shared).toInt().coerceIn(1, short - gapPixels - 1)
         val rail = (short - main).coerceAtLeast(gapPixels + 1)
         return normal.copy(geometry = g.copy(topHeight = top, sidebarWidth = rail,
@@ -94,14 +97,14 @@ data class WorkspaceLayoutProfile(
     }
 
     private fun slotBounds(count: Int, fit: Boolean = true): List<Slot> {
-        val height = (geometry.sidebarLogicalHeight - gapPixels * (count - 1))
+        val height = (geometry.sidebarLogicalHeight - slotGapPixels * (count - 1))
             .coerceAtLeast(count)
         val base = height / count
         val remainder = height % count
         return List(count) { index ->
             val cellHeight = base + if (index < remainder) 1 else 0
             val cellWidth = geometry.sidebarWidth - gapPixels
-            val top = index * (base + gapPixels) + minOf(index, remainder)
+            val top = index * (base + slotGapPixels) + minOf(index, remainder)
             if (!fit) Slot(cellWidth, cellHeight, top) else {
                 val scale = minOf(cellWidth.toDouble() / canvas.width, cellHeight.toDouble() / canvas.height)
                 val height = (canvas.height * scale).toInt().coerceAtLeast(1)
@@ -148,7 +151,7 @@ data class WorkspaceLayoutProfile(
             WorkspaceLayoutProfile(WorkspaceGeometry.forDisplay(width, height, density = densityDpi / 160f,
                 navigationInsets = insets, displayRotation = displayRotation, controlAtBottom = controlAtBottom,
                 statusInset = statusInset),
-                densityDpi, (densityDpi / 160f).toInt().coerceAtLeast(1))
+                densityDpi, (WorkspaceControlMetrics.RAIL_GAP_DP * densityDpi / 160f).toInt().coerceAtLeast(1))
 
         fun decode(encoded: String?): WorkspaceLayoutProfile? = runCatching {
             val p = encoded?.split(',') ?: return@runCatching null

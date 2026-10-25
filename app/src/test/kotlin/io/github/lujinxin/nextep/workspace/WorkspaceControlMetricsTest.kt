@@ -23,7 +23,7 @@ class WorkspaceControlMetricsTest {
     fun oppositeLandscapeControlsHaveTheSameCompactThickness() {
         for (rotation in listOf(1, 3)) {
             val g = WorkspaceLayoutProfile.create(2354, 1080, 480, WorkspaceNavigationInsets(), rotation).geometry
-            assertEquals(474, g.topHeight)
+            assertEquals(505, g.topHeight)
         }
     }
 }

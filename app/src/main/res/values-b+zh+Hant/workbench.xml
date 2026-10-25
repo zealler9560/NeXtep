@@ -55,7 +55,7 @@
     <string name="workbench_exit_summary">所有應用回到普通視窗。</string>
     <string name="workbench_exit_action">退出</string>
     <string name="favorite_apps_edit">編輯</string>
-    <string name="favorite_apps_summary">已選 %1$d 個，最多 %2$d 個</string>
+    <string name="favorite_apps_summary">已選 %1$d 個</string>
     <string name="workbench_compare_hint">同一件商品，同時在幾個應用程式裡搜尋，各開一個小視窗。</string>
     <string name="section_scenes">工作場景</string>
     <string name="scenes_summary">把目前的大視窗和四個小視窗存成一套，隨時一鍵恢復。</string>

@@ -91,11 +91,13 @@ class TopAppStripView(
     private val appRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(6), 0, dp(6), 0)
     }
     private val appScroll = HorizontalScrollView(context).apply {
         isHorizontalScrollBarEnabled = false
         isFillViewport = true
+        // The row scrolls; a fade at the trailing edge says so instead of a hard clip.
+        isHorizontalFadingEdgeEnabled = true
+        setFadingEdgeLength(dp(24))
         addView(appRow, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
     }
     /** Saved scenes left to right, then the add button while there is room. */
@@ -135,7 +137,10 @@ class TopAppStripView(
                 orientation = LinearLayout.VERTICAL
                 // Title row and app row sit as one block, centred in the space below the status band.
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(7), 0, dp(7), dp(WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP))
+                // Title, first icon and the scene buttons' visible edge share one EDGE_INSET_DP line;
+                // the buttons carry a touch inset, so the end padding gives that much back.
+                setPadding(dp(EDGE_INSET_DP), 0, dp(EDGE_INSET_DP - SCENE_BUTTON_INSET_DP),
+                    dp(WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP))
                 addView(
                     actionRow(),
                     LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(WorkspaceControlMetrics.ACTION_HEIGHT_DP)),
@@ -144,7 +149,10 @@ class TopAppStripView(
                     appScroll,
                     LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT,
                         dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP + WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP))
-                        .apply { topMargin = dp(WorkspaceControlMetrics.APP_ROW_GAP_DP) },
+                        .apply {
+                            topMargin = dp(WorkspaceControlMetrics.APP_ROW_GAP_DP)
+                            marginEnd = dp(SCENE_BUTTON_INSET_DP)
+                        },
                 )
             },
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
@@ -323,10 +331,9 @@ class TopAppStripView(
     private fun renderScenes() {
         sceneBar.removeAllViews()
         val shown = scenes.take(WorkbenchScene.MAX_SCENES)
-        val size = dp(SCENE_BUTTON_SIZE_DP)
-        fun add(view: View) = sceneBar.addView(view, LinearLayout.LayoutParams(size, size).apply {
-            if (sceneBar.childCount > 0) marginStart = dp(SCENE_BUTTON_GAP_DP)
-        })
+        // 48dp touch targets; the visible 36dp card sits inside, so neighbours show a 12dp gap.
+        val size = dp(SCENE_BUTTON_SIZE_DP + 2 * SCENE_BUTTON_INSET_DP)
+        fun add(view: View) = sceneBar.addView(view, LinearLayout.LayoutParams(size, size))
         shown.forEach { scene -> add(sceneButton(scene, scene.name == activeScene)) }
         if (shown.size < WorkbenchScene.MAX_SCENES) {
             add(iconButton(WorkbenchIcon(WorkbenchIcon.Kind.SCENE_ADD, appearance.accent), selected = false).apply {
@@ -351,7 +358,7 @@ class TopAppStripView(
             setTextColor(appearance.accent)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setAutoSizeTextTypeUniformWithConfiguration(8, 13, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
-            setPadding(dp(3), 0, dp(3), 0)
+            setPadding(dp(3 + SCENE_BUTTON_INSET_DP), 0, dp(3 + SCENE_BUTTON_INSET_DP), 0)
             background = buttonBackground(selected)
         }
         return view.apply {
@@ -371,19 +378,22 @@ class TopAppStripView(
     private fun iconButton(icon: WorkbenchIcon, selected: Boolean) = android.widget.ImageButton(context).apply {
         setImageDrawable(icon)
         scaleType = ImageView.ScaleType.FIT_CENTER
-        setPadding(dp(8), dp(8), dp(8), dp(8))
+        dp(8 + SCENE_BUTTON_INSET_DP).let { setPadding(it, it, it, it) }
         isFocusable = true
         background = buttonBackground(selected)
     }
 
-    /** Buttons share the empty-slot card tone; the current scene carries an accent ring. */
-    private fun buttonBackground(selected: Boolean) = android.graphics.drawable.RippleDrawable(
-        android.content.res.ColorStateList.valueOf(appearance.accent and 0x33ffffff),
-        android.graphics.drawable.GradientDrawable().apply {
-            cornerRadius = dp(12).toFloat()
-            setColor(if (selected) (appearance.accent and 0x00ffffff) or 0x26000000 else appearance.card)
-            setStroke(dp(if (selected) 2 else 1), if (selected) appearance.accent else appearance.outline)
-        }, null)
+    /** Buttons share the empty-slot card tone; the current scene carries an accent ring.
+     * The card is inset from the view, which stays the full touch target. */
+    private fun buttonBackground(selected: Boolean) = android.graphics.drawable.InsetDrawable(
+        android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(appearance.accent and 0x33ffffff),
+            android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(if (selected) (appearance.accent and 0x00ffffff) or 0x26000000 else appearance.slotCard)
+                setStroke(dp(if (selected) 2 else 1), if (selected) appearance.accent else appearance.outline)
+            }, null),
+        dp(SCENE_BUTTON_INSET_DP))
 
     private fun actionRow(): View = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -395,12 +405,9 @@ class TopAppStripView(
                 addView(heading, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(24)))
                 addView(titleView, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             },
-            LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply {
-                marginStart = dp(10)
-                marginEnd = dp(10)
-            },
+            LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply { marginEnd = dp(10) },
         )
-        // Up to six 36dp scene buttons with 6dp gaps; the title column narrows to make room.
+        // Up to six 48dp scene buttons; the title column narrows to make room.
         addView(sceneBar, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
     }
 
@@ -409,7 +416,7 @@ class TopAppStripView(
         if (internalAppDragActive) { deferredApps = entries; return }
         val scrollX = appScroll.scrollX
         var structureChanged = false
-        val visible = entries.take(10)
+        val visible = entries
         val keys = visible.mapTo(hashSetOf()) { it.key }
         val obsolete = appTiles.entries.iterator()
         while (obsolete.hasNext()) {
@@ -444,7 +451,8 @@ class TopAppStripView(
 
         init {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            // The icon sits on the tile's leading edge so the first glyph shares the title's line.
+            gravity = Gravity.BOTTOM or Gravity.START
             isClickable = true
             isLongClickable = true
             setPadding(0, 0, 0, dp(WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP))
@@ -566,7 +574,8 @@ class TopAppStripView(
         // The Find X9s Pro the row was tuned on: 1216 px, about 410 dp across.
         const val REFERENCE_WIDTH_DP = 410f
         const val SCENE_BUTTON_SIZE_DP = 36
-        const val SCENE_BUTTON_GAP_DP = 6
+        const val SCENE_BUTTON_INSET_DP = 6
+        const val EDGE_INSET_DP = 16
         const val REFRESH_INTERVAL_MS = 15_000L
         const val TOUCHABLE_INSETS_REGION = 3
     }

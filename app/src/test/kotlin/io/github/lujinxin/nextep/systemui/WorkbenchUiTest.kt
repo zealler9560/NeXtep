@@ -67,11 +67,14 @@ class WorkbenchUiTest {
         val above = rowBounds.top - (40 * density).toInt()
         val below = height - appsBounds.bottom
         assertTrue("above=$above below=$below", below >= (6 * density).toInt() && kotlin.math.abs(above - below) <= (4 * density).toInt())
-        // Equal 36dp buttons separated by 6dp gaps: two default scenes and the add button.
+        // Adjacent 48dp touch targets, each drawing its 36dp card 6dp inside: two default scenes and the add button.
         assertEquals(3, bar.childCount)
-        assertEquals((36 * density).toInt(), payment.width)
-        assertEquals((6 * density).toInt(), payment.left - bar.getChildAt(0).right)
-        assertEquals((6 * density).toInt(), bar.getChildAt(2).left - payment.right)
+        assertEquals((48 * density).toInt(), payment.width)
+        assertEquals(0, payment.left - bar.getChildAt(0).right)
+        assertEquals(0, bar.getChildAt(2).left - payment.right)
+        val cardInset = Rect()
+        assertTrue(payment.background.getPadding(cardInset))
+        assertEquals((6 * density).toInt(), cardInset.left)
         assertNotSame(field(view, "appRow"), bar)
         assertTrue(payment.performClick())
         assertEquals(1, opened)
@@ -98,10 +101,11 @@ class WorkbenchUiTest {
                 // Light icons must not stay white on the light panel (±4 covers premultiply rounding).
                 fun near(a: Int, b: Int) = listOf(16, 8, 0).all { kotlin.math.abs((a shr it and 0xFF) - (b shr it and 0xFF)) <= 4 }
                 assertTrue("button $index", painted.all { near(it, theme.accent) })
-                val background = button.background as android.graphics.drawable.RippleDrawable
+                val background = (button.background as android.graphics.drawable.InsetDrawable).drawable
+                    as android.graphics.drawable.RippleDrawable
                 val fill = (background.getDrawable(0) as android.graphics.drawable.GradientDrawable).color!!.defaultColor
-                // The scene the workspace shows (the third button) is tinted; the rest use the card tone.
-                if (index == 2) assertNotEquals(theme.card, fill) else assertEquals(theme.card, fill)
+                // The scene the workspace shows (the third button) is tinted; the rest share the empty slot's card tone.
+                if (index == 2) assertNotEquals(theme.slotCard, fill) else assertEquals(theme.slotCard, fill)
             }
         }
         val bar = field(view, "sceneBar") as android.widget.LinearLayout
@@ -273,7 +277,7 @@ class WorkbenchUiTest {
         }
         // Records written by the previous release still decode with the control at the top.
         assertEquals(WorkspaceGeometry.forDisplay(1216, 2640, SidebarSide.RIGHT, 3f, displayRotation = 0),
-            decode.invoke(bridge, "1216,2640,531,244,RIGHT,0,0,0,0,0"))
+            decode.invoke(bridge, "1216,2640,562,258,RIGHT,0,0,0,0,0"))
     }
 
     @Test fun roundedMainFrameMasksOnlyCornersAndLeavesAppContentVisible() {
