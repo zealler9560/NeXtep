@@ -112,6 +112,7 @@ object SystemUiBottomCornerGestureMonitor {
                                 if (result == BottomCornerGestureDetector.Result.CONFIRMED) {
                                     // Cancel app/navigation input only after the diagonal is confirmed.
                                     pilfer.invoke(inputMonitor)
+                                    NeXtepLog.info("bottom_corner_gesture", "Confirmed ${detector.lastConfirmed}")
                                     val confirmedGeneration = generation
                                     mainHandler.post {
                                         runCatching {

@@ -1,7 +1,7 @@
 package io.github.lujinxin.nextep.systemui
 
 class BottomCornerGestureDetector(
-    density: Float,
+    private val density: Float,
     private val canActivate: () -> Boolean = { true },
 ) {
     enum class Result { IGNORED, OBSERVING, ABANDONED, CONFIRMED }
@@ -24,6 +24,11 @@ class BottomCornerGestureDetector(
     private var downRotation = 0
 
     val isObserving: Boolean get() = observing
+
+    /** The last confirmed swipe, described in dp from its corner. */
+    var lastConfirmed: String? = null
+        private set
+    private fun dp(pixels: Float) = (pixels / density).toInt()
 
     fun reset() { observing = false }
 
@@ -71,7 +76,13 @@ class BottomCornerGestureDetector(
             }
             if (inward >= minimumDistance && upward >= minimumDistance &&
                 inward <= upward * maximumSlope && upward <= inward * maximumSlope
-            ) return finish(if (canActivate()) Result.CONFIRMED else Result.ABANDONED)
+            ) {
+                // In dp from the corner, for diagnostics: where the swipe began and how it moved.
+                lastConfirmed = "corner=${if (fromLeft) "left" else "right"} " +
+                    "start=${dp(if (fromLeft) downX else downWidth - downX)},${dp(downHeight - downY)} " +
+                    "move=${dp(inward)},${dp(upward)} ms=${eventTime - downTime}"
+                return finish(if (canActivate()) Result.CONFIRMED else Result.ABANDONED)
+            }
             if (maxOf(inward, upward) >= minimumDistance &&
                 minOf(inward, upward) < maxOf(inward, upward) / 4f
             ) return finish(Result.ABANDONED)

@@ -422,6 +422,13 @@ internal class WorkbenchToolsController(
             created = uri
             checkNotNull(resolver.openOutputStream(uri)).bufferedWriter().use {
                 it.write("NeXtep diagnostics\nSDK=${android.os.Build.VERSION.SDK_INT}\n")
+                // Which build, installed when, and whether the phone has restarted since (SystemUI loads it at boot).
+                val panes = runCatching { context.packageManager.getPackageInfo(
+                    io.github.lujinxin.nextep.trigger.TriggerBroadcastContract.MODULE_PACKAGE, 0) }.getOrNull()
+                fun time(ms: Long) = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(ms))
+                val boot = System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()
+                it.write("Panes=${panes?.versionName} (${panes?.longVersionCode}) installed=${panes?.lastUpdateTime?.let(::time)} " +
+                    "boot=${time(boot)}\ndevice=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} rom=${android.os.Build.DISPLAY}\n")
                 it.write(NeXtepLog.diagnostics())
             }
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
