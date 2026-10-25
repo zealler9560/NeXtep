@@ -129,7 +129,7 @@ Open Panes from its Home screen icon. One page, seven groups:
 - Screenshots and screen recording of the workspace are blocked by default. Settings can allow them for the current session; leaving the workspace, locking the phone or opening Settings blocks them again.
 - With "Hide workspace tasks from Recents" on, workspace apps stay out of Recents until you leave the workspace.
 - Apps keep their own protection (payment codes, DRM video, enterprise policy); Panes does not lift it.
-- Exported diagnostics hold only the module's last 128 events, with no search terms, links, accounts or screen content.
+- Exported diagnostics hold the module's last 2,000 actions and state changes (opening, closing, switching, apps moving between panes), with no search terms, links, accounts or screen content.
 - Landscape video detection depends on the app and the system: a muted portrait player without a media session may not be recognised.
 
 ## Build

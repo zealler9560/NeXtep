@@ -201,8 +201,13 @@ object SystemUiRuntime {
     fun toggleWorkspaceFromGesture() {
         if (!isStatusBarGestureEnabled() || !::workspaceController.isInitialized) return
         val target = !workspaceController.isActive()
-        if (target && isKeyguardLocked(applicationContext)) return
-        if (workspaceController.setActive(target)) {
+        if (target && isKeyguardLocked(applicationContext)) {
+            NeXtepLog.info("bottom_corner_gesture", "Ignored open on the lock screen")
+            return
+        }
+        val handled = workspaceController.setActive(target)
+        NeXtepLog.info("bottom_corner_gesture", "Toggle target=$target handled=$handled")
+        if (handled) {
             publishWorkspaceSurfaceState(target)
             if (!target) WorkspaceStateBridge.requestInactiveFromSystemUi(applicationContext)
         }
@@ -354,10 +359,13 @@ object SystemUiRuntime {
         TriggerBroadcastContract.ACTION_TOGGLE_WORKSPACE,
         TriggerBroadcastContract.ACTION_SET_WORKSPACE -> {
             val target = requestedTarget(intent) ?: false
-            if (target && isKeyguardLocked(context)) false
+            (if (target && isKeyguardLocked(context)) false
             else workspaceController.setActive(target).also { handled ->
                 // The tile/coordinated path must also restore the separate assistant panel.
                 if (handled) publishWorkspaceSurfaceState(target)
+            }).also { handled ->
+                NeXtepLog.info("systemui_runtime", "Control ${intent.action?.substringAfterLast('.')} " +
+                    "source=${intent.getStringExtra(TriggerBroadcastContract.EXTRA_SOURCE)} target=$target handled=$handled")
             }
         }
         TriggerBroadcastContract.ACTION_QUERY_WORKSPACE -> true
@@ -365,7 +373,9 @@ object SystemUiRuntime {
             val key = intent.getStringExtra(TriggerBroadcastContract.EXTRA_COMMAND_KEY).orEmpty()
             val value = intent.getStringExtra(TriggerBroadcastContract.EXTRA_COMMAND_VALUE)
             windowController.applyWorkbenchCommand(key, value).also {
-                NeXtepLog.info("systemui_runtime", "Workbench command key=$key value=$value handled=$it")
+                // An open-in-pane value carries the shared link or text; keep only the pane index.
+                val shown = if (key == TriggerBroadcastContract.COMMAND_OPEN_IN_PANE) value?.substringBefore('|') else value
+                NeXtepLog.info("systemui_runtime", "Workbench command key=$key value=$shown handled=$it")
             }
         }
         TriggerBroadcastContract.ACTION_LAUNCH_SLOT_TEST -> {
