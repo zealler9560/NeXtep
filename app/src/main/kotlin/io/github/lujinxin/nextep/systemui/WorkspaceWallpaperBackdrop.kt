@@ -107,10 +107,11 @@ object WorkspaceWallpaperBackdrop {
         NeXtepLog.warn("wallpaper_backdrop", "Wallpaper surface capture unavailable", error)
     }.getOrNull()
 
+    /** [fallback] fills the panel until the first capture; behind it is only the black display. */
     fun crop(bitmap: Bitmap?, originX: Int, originY: Int, strength: Int,
-        previous: Drawable? = null): Drawable =
+        previous: Drawable? = null, fallback: Int = Color.TRANSPARENT): Drawable =
         (previous as? WallpaperCropDrawable ?: WallpaperCropDrawable()).apply {
-            update(bitmap, originX, originY, strength.coerceIn(0, 100))
+            update(bitmap, originX, originY, strength.coerceIn(0, 100), fallback)
         }
 
     fun isLight(bitmap: Bitmap?, originX: Int, originY: Int, width: Int, height: Int): Boolean =
@@ -139,6 +140,7 @@ private class WallpaperCropDrawable : Drawable() {
     private var originX = 0
     private var originY = 0
     private var strength = -1
+    private var fallback = Color.TRANSPARENT
     private var density = 0f
     private val sourceRect = Rect()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
@@ -147,12 +149,13 @@ private class WallpaperCropDrawable : Drawable() {
 
     private var blurredWallpaper: android.graphics.RenderNode? = null
 
-    fun update(source: Bitmap?, x: Int, y: Int, blur: Int) {
+    fun update(source: Bitmap?, x: Int, y: Int, blur: Int, fill: Int) {
         val imageChanged = bitmap !== source
         val blurChanged = strength != blur
         val updatedDensity = android.content.res.Resources.getSystem().displayMetrics.density
         val densityChanged = density != updatedDensity
-        if (!imageChanged && !blurChanged && !densityChanged && originX == x && originY == y) return
+        if (!imageChanged && !blurChanged && !densityChanged && originX == x && originY == y && fallback == fill) return
+        fallback = fill
         bitmap = source
         originX = x
         originY = y
@@ -185,12 +188,7 @@ private class WallpaperCropDrawable : Drawable() {
     }
 
     override fun draw(canvas: Canvas) {
-        val source = bitmap ?: run {
-            // Until the first capture, let the requested system wallpaper show
-            // through instead of covering the control area and empty slots in black.
-            drawTint(canvas)
-            return
-        }
+        val source = bitmap ?: return canvas.drawColor(fallback)
         val left = originX.coerceIn(0, source.width)
         val top = originY.coerceIn(0, source.height)
         val right = (left + bounds.width()).coerceAtMost(source.width)
@@ -211,14 +209,6 @@ private class WallpaperCropDrawable : Drawable() {
             canvas.drawBitmap(source, sourceRect, bounds, paint)
         }
         // The panel tone drawn over this layer tints the captured wallpaper.
-    }
-
-    private fun drawTint(canvas: Canvas) {
-        // Neutral translucent layers soften contrast without blurring foreground content.
-        if (strength > 0) {
-            canvas.drawColor(Color.argb(strength * 32 / 100, 16, 23, 34))
-            canvas.drawColor(Color.argb(strength * 20 / 100, 235, 241, 248))
-        }
     }
 
     override fun setAlpha(alpha: Int) {

@@ -316,6 +316,8 @@ class NeXtepWindowController(
                     // Retain the displayed frame while the new wallpaper starts rendering.
                     // OEM live services may change content without changing component/id.
                     backdropGeneration.incrementAndGet()
+                    // Closed, the kept frame shows the old wallpaper; the next entry captures afresh.
+                    if (!workspaceVisible) releaseWallpaperAfterExit()
                 }
                 Intent.ACTION_USER_PRESENT -> Unit
                 Intent.ACTION_SCREEN_OFF -> { setCaptureAllowed(false); tools.dismiss(); return }
@@ -351,8 +353,6 @@ class NeXtepWindowController(
                 Context.RECEIVER_EXPORTED,
             )
         }.onFailure { NeXtepLog.warn("wallpaper_backdrop", "Wallpaper change listener unavailable", it) }
-        // The frame is captured on entry; holding a full-screen bitmap while the workspace
-        // is closed only costs SystemUI memory.
         runCatching {
             context.contentResolver.registerContentObserver(SystemServerWorkspaceBridge.sceneUri(), false, sceneObserver)
         }.onFailure { NeXtepLog.warn("workbench_scene", "Scene observer unavailable", it) }
@@ -508,7 +508,7 @@ class NeXtepWindowController(
         panelGeneration++
         // The main app is growing back; a task-change reconcile during the fade re-shrank it.
         slotCoordinator?.pauseReconciliation()
-        releaseWallpaperAfterExit()
+        // The frame stays for the next entry: the translucent panels showed black until a new capture.
         tools.dismiss()
         publishPrivacy()
         cancelDragVisuals()
@@ -1153,7 +1153,7 @@ class NeXtepWindowController(
     private fun applyWallpaperBackdrop(geometry: WorkspaceGeometry) {
         records.firstOrNull { it.title == "NeXtepTopBar" }?.view?.let { view ->
             val background = WorkspaceWallpaperBackdrop.crop(wallpaperBitmap,
-                geometry.controlLeft, geometry.controlTop, frostStrength, view.background)
+                geometry.controlLeft, geometry.controlTop, frostStrength, view.background, appearance.opaquePanel)
             if (view.background !== background) view.background = background
         }
         applySidebarBackdrop(geometry)
@@ -1163,7 +1163,7 @@ class NeXtepWindowController(
     private fun applySidebarBackdrop(geometry: WorkspaceGeometry) {
         records.firstOrNull { it.title == "NeXtepSidebar" }?.view?.let { view ->
             val background = WorkspaceWallpaperBackdrop.crop(wallpaperBitmap,
-                geometry.sidebarLeft, geometry.sidebarTop, frostStrength, view.background)
+                geometry.sidebarLeft, geometry.sidebarTop, frostStrength, view.background, appearance.opaquePanel)
             if (view.background !== background) view.background = background
         }
     }
@@ -1192,6 +1192,7 @@ class NeXtepWindowController(
         sidebarView?.background = appearance.background()
         slotWindows.forEach { it.view.setAppearance(appearance) }
         contentHighlightView?.background = mainFrame(geometry())
+        applyWallpaperBackdrop(geometry())
     }
 
     private fun setCaptureAllowed(allowed: Boolean) {
