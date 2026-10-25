@@ -1073,14 +1073,33 @@ class NeXtepWindowController(
         // An app lays out again when it changes window, and some pad their top for a status bar even in a
         // side pane: just before the card fades, it takes the app as the main window now shows it.
         val reveal: (() -> Unit) -> Unit = if (targetIndex != null) move else { show ->
-            move {
-                mainTaskPresenter.currentTaskId()?.let { swapAnimator.refresh(1, mainPanePreview(it, geometry())) }
-                show()
-            }
+            move { refreshArrivedMain(show, swapAnimator.current, attempt = 0) }
         }
         swapAnimator.animate(sourcePreview, targetPreview, !targetOccupied, startRect,
             android.graphics.RectF(sourceRect), android.graphics.RectF(targetRect),
             geometry.screenWidth, geometry.screenHeight, reveal)
+    }
+
+    /** Gives the swap card the arrived main app once it has drawn its new layout (a flat picture is its
+     * bare window), then [show]s the live app; after about 200 ms it shows it as it is. */
+    private fun refreshArrivedMain(show: () -> Unit, animation: Int, attempt: Int) {
+        if (swapAnimator.current != animation) return show()
+        val shot = mainTaskPresenter.currentTaskId()?.let { mainPanePreview(it, geometry()) }
+        if (shot != null && isFlat(shot) && attempt < ARRIVAL_ATTEMPTS) {
+            shot.recycle()
+            backdropHandler.postDelayed({ refreshArrivedMain(show, animation, attempt + 1) }, ARRIVAL_RETRY_MS)
+            return
+        }
+        swapAnimator.refresh(1, shot, animation)
+        show()
+    }
+
+    private fun isFlat(bitmap: android.graphics.Bitmap): Boolean {
+        val luma = (0 until 9).flatMap { x -> (0 until 16).map { y ->
+            val c = bitmap.getPixel(x * (bitmap.width - 1) / 8, y * (bitmap.height - 1) / 15)
+            (android.graphics.Color.red(c) * 3 + android.graphics.Color.green(c) * 6 + android.graphics.Color.blue(c)) / 10
+        } }
+        return luma.max() - luma.min() < 24
     }
 
     /** The main app cut to what its pane shows (the capture is of the whole screen). */
@@ -1569,6 +1588,8 @@ class NeXtepWindowController(
     private companion object {
         val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
         const val EXPECTED_WINDOW_COUNT = 3
+        const val ARRIVAL_ATTEMPTS = 6
+        const val ARRIVAL_RETRY_MS = 32L
         const val BACKDROP_SETTLE_REFRESHES = 2
         const val BACKDROP_MAX_RETRIES = 8
         const val WORKSPACE_ENTER_DURATION_MS = 240L

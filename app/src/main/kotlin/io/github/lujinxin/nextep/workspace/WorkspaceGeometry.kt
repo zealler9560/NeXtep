@@ -157,9 +157,12 @@ data class WorkspaceGeometry(
                 navigationInsets.bottom.coerceIn(0, screenHeight - top - 2),
             )
             // Portrait: the status band is solved like a top inset. Panes take the aspect of the screen
-            // below it, and the main app is cropped by it instead of showing its blank top.
+            // below it, and the main app is cropped by it instead of showing its blank top. [statusInset]
+            // leaves the main app a gap under a top strip; with the strip at the bottom nothing covers the
+            // status bar, so the panes start below all of it.
+            val keep = if (controlAtBottom && statusInset > 0) (WorkspaceControlMetrics.STATUS_KEEP_DP * density).roundToInt() else 0
             val safeStatusInset = if (screenHeight > screenWidth)
-                statusInset.coerceIn(0, screenHeight - top - safeInsets.bottom - 2) else 0
+                (statusInset + keep).coerceIn(0, screenHeight - top - safeInsets.bottom - 2) else 0
             val availableWidth = screenWidth - safeInsets.left - safeInsets.right
             val availableHeight = screenHeight - safeInsets.top - safeInsets.bottom - safeStatusInset
             val landscape = screenWidth > screenHeight

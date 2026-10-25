@@ -75,10 +75,14 @@ internal class WorkspaceSwapAnimator(
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(::once, SHOW_TIMEOUT_MS)
     }
 
-    /** Show [fresh] in frame [index] from now on, such as its app as the window it moved to shows it. */
-    fun refresh(index: Int, fresh: Bitmap?) {
+    /** Identifies the running animation; [refresh] ignores pictures meant for an earlier one. */
+    val current: Int get() = generation
+
+    /** Show [fresh] in frame [index] of animation [current] from now on, such as its app as the window it
+     * moved to shows it. */
+    fun refresh(index: Int, fresh: Bitmap?, current: Int = generation) {
         fresh ?: return
-        val preview = overlay
+        val preview = overlay?.takeIf { current == generation }
         val frame = preview?.frames?.getOrNull(index)
         if (preview == null || frame == null) return fresh.recycle()
         frame.bitmap?.recycle()

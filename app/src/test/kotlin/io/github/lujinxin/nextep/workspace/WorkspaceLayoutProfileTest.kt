@@ -115,9 +115,9 @@ class WorkspaceLayoutProfileTest {
         val bottom = bottomProfile.geometry(SidebarSide.LEFT)
         assertTrue(bottom.controlAtBottom)
         assertEquals(SidebarSide.LEFT, bottom.sidebarSide)
-        // The status band is free; the rail and the main window share that top edge and stay
-        // proportional, so nothing is letterboxed beside the rail.
-        assertEquals(reserve, bottom.contentTop)
+        // The whole status bar stays free (the main app's kept gap is for a top strip only); the rail and
+        // the main window share that top edge and stay proportional, so nothing is letterboxed beside the rail.
+        assertEquals(reserve + kotlin.math.round(WorkspaceControlMetrics.STATUS_KEEP_DP * 476 / 160f).toInt(), bottom.contentTop)
         assertEquals(bottom.contentTop, bottom.sidebarTop)
         assertEquals(bottom.controlTop, bottom.contentBottom)
         assertEquals(bottom.contentHeight, bottom.sidebarPhysicalHeight)
