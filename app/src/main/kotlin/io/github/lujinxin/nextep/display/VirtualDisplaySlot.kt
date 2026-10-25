@@ -33,6 +33,7 @@ class VirtualDisplaySlot(
 
     private val applicationContext = context.applicationContext ?: context
     private val factory = VirtualDisplayFactory(applicationContext)
+    private val statusInsets = SlotStatusBarInsets(applicationContext, index)
     private var active = false
     private var suspended = false
     private var surface: Surface? = null
@@ -131,6 +132,7 @@ class VirtualDisplaySlot(
     fun setLayoutProfile(profile: WorkspaceLayoutProfile) {
         if (layoutProfile == profile) return
         layoutProfile = profile
+        statusInsets.sync(virtualDisplay?.display, profile.statusBarHeight)
         updateDisplay(view.textureView.holder)
     }
 
@@ -457,6 +459,7 @@ class VirtualDisplaySlot(
                     boundWidth = view.textureView.holder.surfaceFrame.width()
                     boundHeight = view.textureView.holder.surfaceFrame.height()
                     virtualDisplay = display
+                    statusInsets.sync(display.display, layoutProfile?.statusBarHeight ?: 0)
                     listener?.onDisplayReady(index, display.display.displayId)
                     NeXtepLog.info(
                         "virtual_display",
@@ -500,6 +503,7 @@ class VirtualDisplaySlot(
         view.releaseCover()
         runCatching { virtualDisplay?.setSurface(null) }
         releasePlaceholder()
+        statusInsets.detach()
         virtualDisplay?.release()
         virtualDisplay = null
         activeGeometry = null

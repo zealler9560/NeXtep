@@ -11,9 +11,13 @@ data class WorkspaceLayoutProfile(
     val wideSlotIndex: Int? = null,
     /** Width/height of the wide slot's picture; 16:9 fills the width for any common video. */
     val wideAspect: Double = DEFAULT_WIDE_ASPECT,
-    /** The measured status bar height; not recorded, a record is checked against it on reading. */
+    /** The measured status bar height less the kept gap; not recorded, a record is checked against it on reading. */
     val statusBar: Int = 0,
 ) {
+    /** The whole status bar: the inset a pane's display provides so apps lay out as on the phone's. */
+    val statusBarHeight: Int get() = if (statusBar == 0) 0 else
+        statusBar + (WorkspaceControlMetrics.STATUS_KEEP_DP * densityDpi / 160f).toInt()
+
     data class Slot(val width: Int, val height: Int, val top: Int)
     data class Source(val left: Int, val top: Int, val right: Int, val bottom: Int) {
         val width: Int get() = right - left
