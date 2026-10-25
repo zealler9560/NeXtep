@@ -37,9 +37,23 @@ internal enum class WorkbenchAppearance(
         }
     }
 
+    /** A paused side pane's corner mark: the same disc as the empty-slot badge, with two bars. */
+    fun pauseBadge(density: Float): android.graphics.drawable.Drawable {
+        val disc = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(badgeFill)
+        }
+        val inset = (PAUSE_BADGE_INSET_DP * density).toInt()
+        return android.graphics.drawable.LayerDrawable(arrayOf(disc, WorkbenchIcon(WorkbenchIcon.Kind.PAUSE, text))).apply {
+            setLayerInset(1, inset, inset, inset, inset)
+        }
+    }
+
     companion object {
         const val BADGE_SIZE_DP = 28
         const val BADGE_INSET_DP = 7
+        const val PAUSE_BADGE_SIZE_DP = 22
+        const val PAUSE_BADGE_INSET_DP = 5
     }
 
     fun background(radius: Float = 0f, stroke: Int = 0) = GradientDrawable(

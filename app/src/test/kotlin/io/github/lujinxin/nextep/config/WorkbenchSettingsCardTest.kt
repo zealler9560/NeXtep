@@ -83,6 +83,22 @@ class WorkbenchSettingsCardTest {
         assertEquals(3, sent.size)
     }
 
+    @Test fun thePauseRowCountsTheAppsSystemUiKeeps() {
+        val activity = Robolectric.buildActivity(AppCompatActivity::class.java).create().get()
+        activity.setTheme(com.google.android.material.R.style.Theme_MaterialComponents_DayNight_NoActionBar)
+        val card = WorkbenchSettingsCard(activity, { done -> done(ready(state("LIGHT", "LEFT", false, false, true).apply {
+            putString(TriggerBroadcastContract.EXTRA_PAUSED_APPS, "com.taobao.taobao,com.zhihu.android")
+        })) }) { _, _, _ -> }
+        fun texts(view: android.view.View): List<String> = when (view) {
+            is android.widget.TextView -> listOf(view.text.toString())
+            is android.view.ViewGroup -> (0 until view.childCount).flatMap { texts(view.getChildAt(it)) }
+            else -> emptyList()
+        }
+        assertTrue(activity.getString(R.string.pause_apps_summary, 2) in texts(card.pauseCard))
+        assertEquals(setOf("a.b"), WorkbenchSettingsCard.pausedApps("a.b,,"))
+        assertTrue(WorkbenchSettingsCard.pausedApps(null).isEmpty())
+    }
+
     @Test fun scenesAreListedWithRestoreHomeAndDeleteAndRestoreNeedsAnOpenWorkspace() {
         val activity = Robolectric.buildActivity(AppCompatActivity::class.java).create().get()
         activity.setTheme(com.google.android.material.R.style.Theme_MaterialComponents_DayNight_NoActionBar)

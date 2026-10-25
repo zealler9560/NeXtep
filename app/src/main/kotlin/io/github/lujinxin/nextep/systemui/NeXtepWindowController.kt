@@ -59,7 +59,7 @@ class NeXtepWindowController(
     private val internalDrag = WorkspaceInternalDragController(
         context, ::geometry, { slotWindows.map { it.view } },
         ::highlightInternalDragTarget, ::dropInternalPayload,
-        { topAppStrip?.finishInternalAppDrag() },
+        { topAppStrip?.finishInternalAppDrag() }, ::onSlotHeld,
     )
     private val backdropGeneration = java.util.concurrent.atomic.AtomicInteger()
     private val backdropWorker = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
@@ -138,6 +138,10 @@ class NeXtepWindowController(
     }
     private var recentsHidden = workbenchPreferences?.getBoolean("hide_recents", false) ?: false
     private var controlAtBottom = workbenchPreferences?.getBoolean("control_bottom", false) ?: false
+    /** Packages that pause after five idle seconds in a side pane; chosen in settings or by a long press. */
+    private val pausedApps = workbenchPreferences?.getStringSet("paused_apps", null).orEmpty().toMutableSet()
+    private val pauseRules = io.github.lujinxin.nextep.display.SlotPauseRules(context, { it in pausedApps }, { wideSlotIndex })
+    private val usageProbe = io.github.lujinxin.nextep.display.SlotUsageProbe(context)
     private val tools = WorkbenchToolsController(context, { appearance },
         { intent -> slotCoordinator?.openExternalInMain(intent)
             ?: Result.failure(IllegalStateException("Workspace unavailable")) },
@@ -152,6 +156,31 @@ class NeXtepWindowController(
         putBoolean(TriggerBroadcastContract.EXTRA_HIDE_RECENTS, recentsHidden)
         putBoolean(TriggerBroadcastContract.EXTRA_CONTROL_BOTTOM, controlAtBottom)
         putString(TriggerBroadcastContract.EXTRA_SCENES, WorkbenchScene.encode(scenes))
+        putString(TriggerBroadcastContract.EXTRA_PAUSED_APPS, pausedApps.sorted().joinToString(","))
+    }
+
+    /** "<package>=true|false" from settings, or a long-press choice on a pane. */
+    private fun setAppPaused(value: String, source: String): Boolean {
+        val packageName = value.substringBefore('=')
+        val pause = value.substringAfter('=', "").toBooleanStrictOrNull() ?: return false
+        if (!PACKAGE_NAME.matches(packageName)) return false
+        if (pause) pausedApps += packageName else pausedApps -= packageName
+        workbenchPreferences?.edit()?.putStringSet("paused_apps", pausedApps.toSet())?.apply()
+        NeXtepLog.info("slot_pause", "Choice package=$packageName pause=$pause source=$source chosen=${pausedApps.size}")
+        slotCoordinator?.refreshPause()
+        return true
+    }
+
+    private fun onSlotHeld(payload: WorkspaceInternalDragController.Payload) {
+        val drag = (payload as? WorkspaceInternalDragController.Payload.Slot)?.drag ?: return
+        if (!workspaceVisible || suspended) return
+        val packageName = slotCoordinator?.slotComponent(drag.slotIndex)?.packageName ?: return
+        val info = runCatching { context.packageManager.getApplicationInfo(packageName, 0) }.getOrNull()
+        val label = info?.let { context.packageManager.getApplicationLabel(it).toString() } ?: packageName
+        tools.showPauseChoice(label, packageName in pausedApps,
+            info?.let(io.github.lujinxin.nextep.workspace.PauseRecommendations::isGame) == true) { pause ->
+            setAppPaused("$packageName=$pause", "pane")
+        }
     }
 
     // Price comparison and payment become the first two scenes once; deleting them later sticks.
@@ -277,6 +306,7 @@ class NeXtepWindowController(
             setControlAtBottom(value.toBoolean())
             true
         }
+        TriggerBroadcastContract.COMMAND_PAUSE_APP -> value?.let { setAppPaused(it, "settings") } ?: false
         TriggerBroadcastContract.COMMAND_EXPORT_DIAGNOSTICS -> tools.exportDiagnostics()
         TriggerBroadcastContract.COMMAND_SCENE_SAVE, TriggerBroadcastContract.COMMAND_SCENE_APPLY,
         TriggerBroadcastContract.COMMAND_SCENE_DELETE, TriggerBroadcastContract.COMMAND_SCENE_RESTORE_DEFAULTS ->
@@ -472,6 +502,7 @@ class NeXtepWindowController(
         if (FeatureGate.VIRTUAL_DISPLAY_SLOTS.defaultEnabled) {
             slotCoordinator?.activate()
         }
+        usageProbe.start { slotCoordinator?.takeIf { workspaceVisible && !suspended }?.usagePanes() }
         // Rapid exit/enter cycles have left the main task scaled with every panel hidden. Whatever
         // cancels the entry animation, the panels must end visible while the workspace is active.
         val generation = ++panelGeneration
@@ -495,6 +526,7 @@ class NeXtepWindowController(
 
     fun hide() {
         workspaceVisible = false
+        usageProbe.stop()
         panelGeneration++
         // The main app is growing back; a task-change reconcile during the fade re-shrank it.
         slotCoordinator?.pauseReconciliation()
@@ -881,6 +913,7 @@ class NeXtepWindowController(
                         contentDrag.abandon()
                     }
                 } },
+                pauseRules = pauseRules,
             )
         }
     }
@@ -1513,6 +1546,7 @@ class NeXtepWindowController(
     private val transitionInterpolator = DecelerateInterpolator(1.6f)
 
     private companion object {
+        val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
         const val EXPECTED_WINDOW_COUNT = 3
         const val BACKDROP_SETTLE_REFRESHES = 2
         const val BACKDROP_MAX_RETRIES = 8

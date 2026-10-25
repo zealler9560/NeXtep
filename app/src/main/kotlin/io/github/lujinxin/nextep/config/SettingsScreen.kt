@@ -23,6 +23,9 @@ import io.github.lujinxin.nextep.R
 import io.github.lujinxin.nextep.apps.LauncherAppCatalogContract
 import io.github.lujinxin.nextep.apps.LauncherAppRepository
 import io.github.lujinxin.nextep.trigger.NeXtepTileService
+import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
+import io.github.lujinxin.nextep.trigger.TriggerCoordinator
+import io.github.lujinxin.nextep.workspace.PauseRecommendations
 
 object SettingsScreen {
     private data class AppOption(
@@ -85,6 +88,7 @@ object SettingsScreen {
 
             addView(workbench.scenesCard, card())
             addView(workbench.layoutCard, card())
+            addView(workbench.pauseCard, card())
 
             val addTileButton = SettingsRowButton.create(activity).apply {
                 text = activity.getString(R.string.action_add)
@@ -283,6 +287,87 @@ object SettingsScreen {
                 selected.retainAll(appByName.keys)
                 render()
             }
+        }
+    }
+
+    /**
+     * The apps that pause in a side pane. SystemUI keeps the choice: each switch is sent at once and
+     * the list mirrors its reply. Recommended apps come first; nothing is chosen for the user.
+     */
+    fun pausedAppsEditor(activity: AppCompatActivity): View {
+        val manager = activity.packageManager
+        // One row per package: the choice holds for the app whichever launcher entry a pane shows.
+        val apps = LauncherAppRepository(activity).load(includeProfiles = false)
+            .distinctBy { it.component.packageName }
+            .map { entry ->
+                val info = runCatching { manager.getApplicationInfo(entry.component.packageName, 0) }.getOrNull()
+                Triple(entry.component.packageName, AppOption(entry.key, entry.userId, entry.label, entry.icon),
+                    info != null && PauseRecommendations.recommended(entry.component.packageName, info.category,
+                        PauseRecommendations.isGame(info)))
+            }
+            .sortedBy { it.second.label.lowercase() }
+        val status = sectionDescription(activity, activity.getString(R.string.workbench_state_loading))
+        val recommended = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val others = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        var chosen = emptySet<String>()
+        var available = false
+        lateinit var refresh: () -> Unit
+        fun render() {
+            status.visibility = if (available) View.GONE else View.VISIBLE
+            recommended.removeAllViews()
+            others.removeAllViews()
+            apps.forEach { (packageName, option, suggested) ->
+                val list = if (suggested) recommended else others
+                if (list.childCount > 0) list.addView(divider(activity))
+                list.addView(appRow(activity, option, 42).apply {
+                    addView(SwitchMaterial(activity).apply {
+                        isChecked = packageName in chosen
+                        isEnabled = available
+                        contentDescription = option.label
+                        setOnCheckedChangeListener { view, pause ->
+                            view.isEnabled = false
+                            TriggerCoordinator.workbenchCommand(activity, TriggerBroadcastContract.COMMAND_PAUSE_APP,
+                                "$packageName=$pause") { result ->
+                                if (activity.isDestroyed || activity.isFinishing) return@workbenchCommand
+                                if (result !is TriggerCoordinator.RequestResult.Ready) {
+                                    Toast.makeText(activity, R.string.workbench_command_failed, Toast.LENGTH_SHORT).show()
+                                }
+                                refresh()
+                            }
+                        }
+                    }, LinearLayout.LayoutParams(dp(activity, 58), dp(activity, 48)))
+                })
+            }
+            if (recommended.childCount == 0) {
+                recommended.addView(emptyHint(activity, activity.getString(R.string.pause_apps_recommended_none)))
+            }
+        }
+        refresh = {
+            TriggerCoordinator.queryWorkbench(activity) { result ->
+                if (activity.isDestroyed || activity.isFinishing) return@queryWorkbench
+                val state = (result as? TriggerCoordinator.RequestResult.Ready)?.extras
+                    ?.takeIf { it.containsKey(TriggerBroadcastContract.EXTRA_APPEARANCE) }
+                available = state != null
+                if (state != null) chosen = WorkbenchSettingsCard.pausedApps(state.getString(TriggerBroadcastContract.EXTRA_PAUSED_APPS))
+                else status.text = activity.getString(R.string.workbench_state_unavailable)
+                render()
+            }
+        }
+        render()
+        refresh()
+        return sectionCard(activity).apply {
+            addView(sectionContent(activity).apply {
+                addView(sectionTitle(activity, activity.getString(R.string.pause_apps_title)), matchWidth())
+                addView(sectionDescription(activity, activity.getString(R.string.pause_apps_description)), matchWidth())
+                addView(status, matchWidth())
+                addView(subsectionTitle(activity, activity.getString(R.string.pause_apps_recommended)), matchWidth())
+                addView(sectionDescription(activity, activity.getString(R.string.pause_apps_recommended_note)),
+                    matchWidth().apply { bottomMargin = dp(activity, 8) })
+                addView(recommended, matchWidth())
+                addView(subsectionTitle(activity, activity.getString(R.string.pause_apps_others)),
+                    matchWidth().apply { topMargin = dp(activity, 16) })
+                addView(others, matchWidth())
+            })
         }
     }
 

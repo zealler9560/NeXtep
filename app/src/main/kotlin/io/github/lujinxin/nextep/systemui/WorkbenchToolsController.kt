@@ -390,6 +390,44 @@ internal class WorkbenchToolsController(
 
     fun message(text: String) = Toast.makeText(context, text, Toast.LENGTH_LONG).show()
 
+    /** Long-press menu of a side pane: keep its app live there, or pause it after five idle seconds. */
+    fun showPauseChoice(title: String, paused: Boolean, game: Boolean, choose: (Boolean) -> Unit) {
+        dismiss()
+        val a = appearance()
+        val panel = column().apply { setPadding(dp(8), dp(4), dp(8), dp(4)) }
+        val ripple = android.util.TypedValue().also {
+            panel.context.theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true)
+        }
+        panel.addView(TextView(panel.context).apply {
+            text = string(R.string.pause_choice_message)
+            textSize = 13f
+            setTextColor(a.secondary)
+            setPadding(dp(16), 0, dp(16), dp(8))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        listOf(false to R.string.pause_choice_live, true to R.string.pause_choice_pause).forEach { (pause, label) ->
+            val current = pause == paused
+            panel.addView(TextView(panel.context).apply {
+                // A game is warned in its own row: stopped, it can be cleared or dropped from its match.
+                text = if (!pause || !game) string(label) else android.text.SpannableStringBuilder(string(label)).append("\n")
+                    .append(string(R.string.pause_choice_game_warning), android.text.style.RelativeSizeSpan(0.8f),
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                textSize = 16f
+                setTextColor(if (current) a.accent else a.text)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                minHeight = dp(56)
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+                if (ripple.resourceId != 0) setBackgroundResource(ripple.resourceId)
+                if (current) {
+                    val check = WorkbenchIcon(WorkbenchIcon.Kind.CHECK, a.accent).apply { setBounds(0, 0, dp(24), dp(24)) }
+                    setCompoundDrawablesRelative(null, null, check, null)
+                }
+                isSelected = current
+                setOnClickListener { dismiss(); if (!current) choose(pause) }
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        show(builder().setTitle(title).setView(panel).setNegativeButton(string(R.string.workbench_cancel), null).create())
+    }
+
     private fun startPaymentShortcut(action: WorkbenchIntents.Payment): Boolean = runCatching {
         val wechat = action == WorkbenchIntents.Payment.WECHAT_SCAN || action == WorkbenchIntents.Payment.WECHAT_PAY
         val scan = action == WorkbenchIntents.Payment.WECHAT_SCAN || action == WorkbenchIntents.Payment.ALIPAY_SCAN

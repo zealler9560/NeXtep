@@ -12,7 +12,7 @@ import android.graphics.drawable.Drawable
 class WorkbenchIcon(private val kind: Kind, color: Int) : Drawable() {
     enum class Kind {
         COMPARE, PAYMENT, SETTINGS, ADD, BACK, HOME, RECENTS, SCAN, CODE, EXPAND,
-        SCENE_ADD, WORK, STUDY, GAME, MEDIA, READ, SHOP, TRAVEL, LIFE,
+        SCENE_ADD, WORK, STUDY, GAME, MEDIA, READ, SHOP, TRAVEL, LIFE, PAUSE, CHECK,
     }
     companion object {
         /** The glyph of a scene preset key (see WorkbenchScene.PRESET_ICONS). */
@@ -140,6 +140,8 @@ class WorkbenchIcon(private val kind: Kind, color: Int) : Drawable() {
                 canvas.drawArc(13f, 11.5f, 20f, 17.5f, -90f, 180f, false, paint)
                 line(7.5f, 4f, 7.5f, 7f); line(10f, 3.5f, 10f, 7f); line(12.5f, 4f, 12.5f, 7f)
             }
+            Kind.PAUSE -> { line(9f, 7f, 9f, 17f); line(15f, 7f, 15f, 17f) }
+            Kind.CHECK -> canvas.drawPath(Path().apply { moveTo(5f, 12.5f); lineTo(10f, 17.5f); lineTo(19f, 7f) }, paint)
         }
         canvas.restoreToCount(saved)
     }

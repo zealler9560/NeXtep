@@ -30,6 +30,8 @@ internal class WorkbenchSettingsCard(
     val side: MaterialButtonToggleGroup
     val position: MaterialButtonToggleGroup
     val recents: SwitchMaterial
+    val pauseCard: View
+    private val pauseSummary: android.widget.TextView
     val layoutCard: View
     val privacyCard: View
     val supportCard: View
@@ -66,6 +68,25 @@ internal class WorkbenchSettingsCard(
         position = choice(layout, activity.getString(R.string.control_position), TriggerBroadcastContract.COMMAND_CONTROL_BOTTOM,
             listOf("false" to activity.getString(R.string.control_top), "true" to activity.getString(R.string.control_bottom)))
         layoutCard = SettingsScreen.sectionCard(activity).apply { addView(layout) }
+
+        val pause = SettingsScreen.sectionContent(activity)
+        pause.addView(SettingsScreen.sectionTitle(activity, activity.getString(R.string.pause_apps_title)), SettingsScreen.matchWidth())
+        val editPaused = SettingsRowButton.create(activity).apply {
+            text = activity.getString(R.string.favorite_apps_edit)
+            setOnClickListener {
+                activity.startActivity(android.content.Intent(activity, FavoriteAppsActivity::class.java)
+                    .putExtra(FavoriteAppsActivity.EXTRA_PAGE, FavoriteAppsActivity.PAGE_PAUSED))
+            }
+        }
+        controls += editPaused
+        val pauseRow = row(activity.getString(R.string.pause_apps_title), "", editPaused).apply {
+            setOnClickListener { editPaused.performClick() }
+            // Coming back from the editor refreshes the count.
+            viewTreeObserver.addOnWindowFocusChangeListener { focused -> if (focused) refresh() }
+        }
+        pauseSummary = (pauseRow.getChildAt(0) as LinearLayout).getChildAt(1) as android.widget.TextView
+        pause.addView(pauseRow, SettingsScreen.matchWidth())
+        pauseCard = SettingsScreen.sectionCard(activity).apply { addView(pause) }
 
         val privacy = SettingsScreen.sectionContent(activity)
         privacy.addView(SettingsScreen.sectionTitle(activity, activity.getString(R.string.section_privacy)), SettingsScreen.matchWidth())
@@ -120,6 +141,8 @@ internal class WorkbenchSettingsCard(
             position.select(state.getBoolean(TriggerBroadcastContract.EXTRA_CONTROL_BOTTOM).toString())
             recents.isChecked = state.getBoolean(TriggerBroadcastContract.EXTRA_HIDE_RECENTS)
         }
+        pauseSummary.text = activity.getString(R.string.pause_apps_summary,
+            pausedApps(state?.getString(TriggerBroadcastContract.EXTRA_PAUSED_APPS)).size)
         workspaceActive = state?.getBoolean(TriggerBroadcastContract.EXTRA_ACTIVE) == true
         // Saving and restoring act on the live panes, so both need an open workspace.
         saveScene.isEnabled = workspaceActive
@@ -245,6 +268,10 @@ internal class WorkbenchSettingsCard(
         content.addView(row(title, summary, switch).apply { setOnClickListener { switch.performClick() } }, SettingsScreen.matchWidth())
         controls += switch
         return switch
+    }
+
+    companion object {
+        fun pausedApps(value: String?): Set<String> = value.orEmpty().split(',').filter { it.isNotBlank() }.toSet()
     }
 
     private fun row(title: String, summary: String, control: View) =

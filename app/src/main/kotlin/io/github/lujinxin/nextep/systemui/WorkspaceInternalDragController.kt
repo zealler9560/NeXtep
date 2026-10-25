@@ -28,6 +28,8 @@ internal class WorkspaceInternalDragController(
     private val onHover: (Target?) -> Unit,
     private val onDrop: (Payload, Target) -> Boolean,
     private val onFinished: () -> Unit,
+    /** A long press released where it began: the pane's own menu instead of a drop. */
+    private val onHeld: (Payload) -> Unit = {},
 ) {
     sealed interface Payload {
         data class App(val intent: Intent) : Payload
@@ -40,7 +42,11 @@ internal class WorkspaceInternalDragController(
     }
     private data class DropSlot(val target: Target.Slot, val view: TaskSwitcherView, val bounds: Rect)
     private data class Session(val source: View, val payload: Payload, val preview: Preview,
-        val geometry: WorkspaceGeometry, val targets: List<DropSlot>)
+        val geometry: WorkspaceGeometry, val targets: List<DropSlot>) {
+        var start: PointF? = null
+        var moved = false
+    }
+    private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
     private val manager = context.getSystemService(WindowManager::class.java)
     private var session: Session? = null
     private var hovered: Target? = null
@@ -114,12 +120,18 @@ internal class WorkspaceInternalDragController(
 
     fun touch(source: View, event: MotionEvent): Boolean {
         val current = session?.takeIf { it.source === source } ?: return false
+        // The long press began here; the first event after it marks the finger's place.
+        val start = current.start ?: PointF(event.rawX, event.rawY).also { current.start = it }
+        if (kotlin.math.hypot(event.rawX - start.x, event.rawY - start.y) > touchSlop) current.moved = true
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
                 current.preview.point.set(event.rawX, event.rawY)
                 frames.request()
             }
-            MotionEvent.ACTION_UP -> {
+            MotionEvent.ACTION_UP -> if (!current.moved && current.payload is Payload.Slot) {
+                cancel()
+                onHeld(current.payload)
+            } else {
                 (current.payload as? Payload.Slot)?.drag?.dropPoint = PointF(event.rawX, event.rawY)
                 val target = targetAt(current, event.rawX, event.rawY)
                 try {

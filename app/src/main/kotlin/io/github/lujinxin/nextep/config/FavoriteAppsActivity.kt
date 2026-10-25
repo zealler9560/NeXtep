@@ -13,10 +13,16 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import io.github.lujinxin.nextep.R
 
-/** Second-level page: choose up to ten favourite apps and drag them into order. */
+/** Second-level page: the favourite apps (choose and drag into order), or the apps that pause in a side pane. */
 class FavoriteAppsActivity : AppCompatActivity() {
+    companion object {
+        const val EXTRA_PAGE = "page"
+        const val PAGE_PAUSED = "paused"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val paused = intent.getStringExtra(EXTRA_PAGE) == PAGE_PAUSED
         supportActionBar?.hide()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
@@ -31,13 +37,14 @@ class FavoriteAppsActivity : AppCompatActivity() {
             setPadding(dp(20), dp(24), dp(20), dp(24))
             setBackgroundColor(SettingsPalette.page(this@FavoriteAppsActivity))
             addView(TextView(this@FavoriteAppsActivity).apply {
-                text = getString(R.string.app_strip_title)
+                text = getString(if (paused) R.string.pause_apps_title else R.string.app_strip_title)
                 textSize = 28f
                 typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                 setTextColor(SettingsPalette.text(this@FavoriteAppsActivity))
                 ViewCompat.setAccessibilityHeading(this, true)
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
-            addView(SettingsScreen.favoriteAppsEditor(this@FavoriteAppsActivity, SettingsRepository(this@FavoriteAppsActivity)),
+            addView(if (paused) SettingsScreen.pausedAppsEditor(this@FavoriteAppsActivity)
+                else SettingsScreen.favoriteAppsEditor(this@FavoriteAppsActivity, SettingsRepository(this@FavoriteAppsActivity)),
                 LinearLayout.LayoutParams(-1, -2))
         }
         val scroll = ScrollView(this).apply {

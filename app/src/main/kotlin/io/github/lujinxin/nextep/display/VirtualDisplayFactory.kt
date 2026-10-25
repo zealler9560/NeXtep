@@ -3,6 +3,7 @@ package io.github.lujinxin.nextep.display
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.hardware.display.VirtualDisplayConfig
 import android.view.Surface
 import io.github.lujinxin.nextep.framework.VirtualDisplayFlagsCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
@@ -16,13 +17,14 @@ class VirtualDisplayFactory(context: Context) {
             var lastFailure: Throwable? = null
             VirtualDisplayFlagsCompat.resolveCandidates().forEach { flags ->
                 try {
+                    // A pane is about a fifth of the screen: 30 frames look the same there, and apps
+                    // that draw at the display's pace (games, video, animated feeds) draw half as often.
                     val display = manager.createVirtualDisplay(
-                        "NeXtep-slot-$index",
-                        geometry.width,
-                        geometry.height,
-                        geometry.densityDpi,
-                        surface,
-                        flags.value,
+                        VirtualDisplayConfig.Builder("NeXtep-slot-$index", geometry.width, geometry.height, geometry.densityDpi)
+                            .setFlags(flags.value)
+                            .setSurface(surface)
+                            .setRequestedRefreshRate(SLOT_REFRESH_RATE)
+                            .build(),
                     )
                     if (display != null) return@runCatching display
                     lastFailure = IllegalStateException("DisplayManager returned null flags=${flags.names}")
@@ -39,9 +41,14 @@ class VirtualDisplayFactory(context: Context) {
         }.onSuccess { display ->
             NeXtepLog.info(
                 "virtual_display",
-                "Created slot=$index displayId=${display.display.displayId} geometry=$geometry",
+                "Created slot=$index displayId=${display.display.displayId} geometry=$geometry " +
+                    "requestedFps=$SLOT_REFRESH_RATE displayFps=${display.display.refreshRate}",
             )
         }.onFailure { error ->
             NeXtepLog.error("virtual_display", "Creation failed slot=$index geometry=$geometry", error)
         }
+
+    private companion object {
+        const val SLOT_REFRESH_RATE = 30f
+    }
 }

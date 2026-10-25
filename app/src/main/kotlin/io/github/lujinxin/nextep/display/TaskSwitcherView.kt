@@ -13,6 +13,8 @@ import android.view.SurfaceHolder
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
+import io.github.lujinxin.nextep.R
+import io.github.lujinxin.nextep.config.AppLanguage
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.systemui.WorkbenchAppearance
 import io.github.lujinxin.nextep.workspace.SidebarSide
@@ -51,6 +53,12 @@ class TaskSwitcherView(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
     private val clearCover = Runnable { clearCover(fade = true) }
+    /** A paused app: its last frame stays over the stopped output until it runs again. */
+    private var coverHeld = false
+    private val pauseBadge = View(context).apply {
+        visibility = GONE
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
     private var listener: Listener? = null
     private var busy = false
     private var currentState: SlotState = SlotState.Empty
@@ -81,6 +89,8 @@ class TaskSwitcherView(
         addView(statusView, LayoutParams(dp(WorkbenchAppearance.BADGE_SIZE_DP),
             dp(WorkbenchAppearance.BADGE_SIZE_DP), Gravity.CENTER))
         addView(coverView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
+        addView(pauseBadge, LayoutParams(dp(WorkbenchAppearance.PAUSE_BADGE_SIZE_DP),
+            dp(WorkbenchAppearance.PAUSE_BADGE_SIZE_DP), Gravity.TOP or Gravity.END).apply { setMargins(dp(6), dp(6), dp(6), dp(6)) })
         showState(SlotState.Empty)
         setOnDragListener { _, event -> handleDrag(event) }
         setOnClickListener {
@@ -168,7 +178,7 @@ class TaskSwitcherView(
             }
             is SlotState.Failed -> showReady(animated = previousState is SlotState.Occupied)
         }
-        if (coverView.visibility == VISIBLE) {
+        if (coverView.visibility == VISIBLE && !coverHeld) {
             removeCallbacks(clearCover)
             when (state) {
                 // shortcut: no first-frame signal from a SurfaceView; the rebound app has drawn
@@ -192,9 +202,36 @@ class TaskSwitcherView(
         NeXtepLog.info("slot_cover", "Shown slot=$slotIndex ${bitmap.width}x${bitmap.height}")
     }
 
+    /** Pause: keep [bitmap] (null keeps the output's own last frame) over the stopped app, with the pause badge. */
+    fun holdCover(bitmap: Bitmap?) {
+        removeCallbacks(clearCover)
+        coverHeld = true
+        if (bitmap != null) {
+            coverView.setImageBitmap(bitmap)
+            coverView.animate().cancel()
+            coverView.alpha = 1f
+            coverView.visibility = VISIBLE
+        }
+        pauseBadge.background = appearance.pauseBadge(resources.displayMetrics.density)
+        pauseBadge.visibility = VISIBLE
+        stateDescription = AppLanguage.string(context, R.string.slot_paused)
+    }
+
+    /** The app runs again: its next frames take over from the held picture shortly. */
+    fun releaseCover() {
+        if (!coverHeld) return
+        coverHeld = false
+        pauseBadge.visibility = GONE
+        stateDescription = null
+        removeCallbacks(clearCover)
+        if (coverView.visibility == VISIBLE) postDelayed(clearCover, COVER_REVEAL_DELAY_MS)
+    }
+
+    fun isCoverHeld(): Boolean = coverHeld
+
     private fun clearCover(fade: Boolean) {
         removeCallbacks(clearCover)
-        if (coverView.visibility != VISIBLE) return
+        if (coverView.visibility != VISIBLE || coverHeld) return
         NeXtepLog.info("slot_cover", "Clearing slot=$slotIndex fade=$fade state=${currentState::class.simpleName}")
         coverView.animate().cancel()
         val release = Runnable {
@@ -250,9 +287,21 @@ class TaskSwitcherView(
         coverView.measure(widthSpec, heightSpec)
     }
 
+    /** The app's picture at this card's size, for a cover that outlives the capture. */
+    internal fun captureCardPreview(): Bitmap? = captureProtectedPreview()?.let { full ->
+        val width = textureView.width
+        val height = textureView.height
+        // An unmeasured view: keep the capture as is, the cover scales it to fit.
+        if (width <= 0 || height <= 0) full
+        else Bitmap.createScaledBitmap(full, width, height, true).also { if (it !== full) full.recycle() }
+    }
+
     // Internal transitions dispose the frame immediately.
     // ScreenCapture still excludes any secure layers belonging to the source app.
     internal fun captureProtectedPreview(): Bitmap? = runCatching {
+        // A paused app is stopped and may draw nothing; its held picture is what the card shows.
+        if (coverHeld) (coverView.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            ?.let { return@runCatching it.copy(it.config ?: Bitmap.Config.ARGB_8888, false) }
         val task = currentState as? SlotState.Occupied ?: return@runCatching null
         // The task fills this slot's canvas; that is the capture's crop.
         val crop = if (outputWidth > 0 && outputHeight > 0) Rect(0, 0, outputWidth, outputHeight) else null
@@ -419,6 +468,7 @@ class TaskSwitcherView(
         appearance = value
         (background as? GradientDrawable)?.apply { setColor(value.slotCard); setStroke(dp(1), value.outline) }
         statusView.background = value.emptyBadge(resources.displayMetrics.density, badgeHighlighted)
+        if (coverHeld) pauseBadge.background = value.pauseBadge(resources.displayMetrics.density)
     }
 
     fun isShowingEmptyBadge(): Boolean = statusView.visibility == VISIBLE

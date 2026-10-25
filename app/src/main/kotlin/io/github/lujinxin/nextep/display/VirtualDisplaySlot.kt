@@ -65,6 +65,55 @@ class VirtualDisplaySlot(
 
     fun setInteractive(value: Boolean) { view.setContentInput(if (value) input else null) }
 
+    private var paused = false
+    private var pausedAt = 0L
+
+    fun isPaused(): Boolean = paused
+
+    fun refreshRate(): Float? = virtualDisplay?.display?.refreshRate
+
+    /**
+     * Pauses the app: without an output the display turns off, and the system stops its activity
+     * as it would a backgrounded app. The card keeps [cover] and the pause badge meanwhile.
+     */
+    fun pause(cover: android.graphics.Bitmap?): Boolean {
+        val display = virtualDisplay
+        // Something is about to move into this pane and waits for its output.
+        if (paused || !active || suspended || parked || display == null || outputBoundAction != null) return false
+        view.holdCover(cover)
+        runCatching { display.setSurface(null) }.onFailure {
+            view.releaseCover()
+            NeXtepLog.warn("slot_pause", "Pause failed slot=$index", it)
+            return false
+        }
+        releasePlaceholder()
+        surface = null
+        paused = true
+        pausedAt = android.os.SystemClock.uptimeMillis()
+        NeXtepLog.info("slot_pause", "Paused slot=$index displayId=${display.display.displayId} " +
+            "displayState=${display.display.state} cover=${cover?.let { "${it.width}x${it.height}" }}")
+        return true
+    }
+
+    /** Connects the output again; the app resumes and its frames replace the held cover. */
+    fun resume(reason: String) {
+        if (!paused) return
+        paused = false
+        val display = virtualDisplay
+        val output = view.textureView.holder.surface.takeIf { it.isValid }
+        if (display != null && active && !suspended && output != null) {
+            runCatching { display.setSurface(output) }.onSuccess {
+                surface = output
+                boundWidth = view.textureView.holder.surfaceFrame.width()
+                boundHeight = view.textureView.holder.surfaceFrame.height()
+            }.onFailure { NeXtepLog.warn("slot_pause", "Output reconnect failed slot=$index", it) }
+        }
+        view.releaseCover()
+        NeXtepLog.info("slot_pause", "Resumed slot=$index reason=$reason " +
+            "pausedMs=${android.os.SystemClock.uptimeMillis() - pausedAt} displayState=${display?.display?.state}")
+        if (surface != null) runOutputBound()
+    }
+
     init {
         view.textureView.holder.addCallback(this)
     }
@@ -92,6 +141,7 @@ class VirtualDisplaySlot(
      * task before that lands it on a sleeping display. The action still runs after a timeout.
      */
     fun whenOutputBound(action: () -> Unit) {
+        resume("output requested")
         mainHandler.removeCallbacks(outputBoundFallback)
         outputBoundAction = null
         val current = view.textureView.holder.surface
@@ -115,7 +165,7 @@ class VirtualDisplaySlot(
      */
     fun ensureOutputShowing(done: () -> Unit) {
         val output = view.textureView
-        if (virtualDisplay == null || !active || suspended || !output.holder.surface.isValid) return done()
+        if (virtualDisplay == null || !active || suspended || paused || !output.holder.surface.isValid) return done()
         val probe = android.graphics.Bitmap.createBitmap(16, 9, android.graphics.Bitmap.Config.ARGB_8888)
         runCatching {
             android.view.PixelCopy.request(output, probe, { result ->
@@ -133,7 +183,7 @@ class VirtualDisplaySlot(
 
     private fun rebindOutput() {
         val display = virtualDisplay ?: return
-        if (!active || suspended) return
+        if (!active || suspended || paused) return
         val holder = view.textureView.holder
         val output = holder.surface.takeIf { it.isValid } ?: return
         runCatching {
@@ -175,6 +225,9 @@ class VirtualDisplaySlot(
         active = false
         suspended = false
         pendingLaunch = null
+        // Parking below turns the display off anyway; the next entry starts every pane live.
+        paused = false
+        view.releaseCover()
         val display = virtualDisplay
         if (display == null || creating) {
             releaseDisplay("workspace hidden")
@@ -217,7 +270,8 @@ class VirtualDisplaySlot(
             return
         }
         if (!suspended) return
-        virtualDisplay?.let { display ->
+        // A paused pane stays off after unlock.
+        if (!paused) virtualDisplay?.let { display ->
             val currentSurface = view.textureView.holder.surface.takeIf { it.isValid } ?: return
             surface = currentSurface
             check(currentSurface.isValid) { "Slot $index output Surface is invalid" }
@@ -234,6 +288,8 @@ class VirtualDisplaySlot(
     }
 
     fun launch(intent: Intent): Result<Unit> {
+        // An app launched onto a display that is off would stay stopped.
+        resume("launch")
         val displayId = virtualDisplay?.display?.displayId
         if (suspended || displayId == null) {
             pendingLaunch = Intent(intent)
@@ -265,7 +321,7 @@ class VirtualDisplaySlot(
         // Without an output the display turns off; turned off and on again within a frame or two
         // (the wide pane's move into the top bar), the system once kept its tasks hidden. A
         // placeholder keeps it on until the new layer arrives.
-        val placeholder = display?.takeIf { active && !suspended }?.let { placeholderOutput() }
+        val placeholder = display?.takeIf { active && !suspended && !paused }?.let { placeholderOutput() }
         runCatching { display?.setSurface(placeholder) }.onFailure {
             NeXtepLog.warn("virtual_display", "Placeholder output failed slot=$index", it)
             runCatching { display?.setSurface(null) }
@@ -304,7 +360,8 @@ class VirtualDisplaySlot(
             if (output != null) createDisplay(output, geometry)
             return
         }
-        if (output != null && (rebind || surface !== output)) {
+        // A paused pane keeps its display off; resume() connects the current output.
+        if (output != null && !paused && (rebind || surface !== output)) {
             display.setSurface(output)
             releasePlaceholder()
             surface = output
@@ -399,6 +456,8 @@ class VirtualDisplaySlot(
         mainHandler.removeCallbacks(outputBoundFallback)
         outputBoundAction = null
         val releasedDisplayId = virtualDisplay?.display?.displayId
+        paused = false
+        view.releaseCover()
         runCatching { virtualDisplay?.setSurface(null) }
         releasePlaceholder()
         virtualDisplay?.release()

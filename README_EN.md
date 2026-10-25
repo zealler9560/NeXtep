@@ -33,6 +33,10 @@ The main pane is the app you are using. The four small panes beside it are four 
   <img src="assets/readme/swap.gif" alt="Tapping a small pane swaps it with the main pane, and back" width="300">
 </p>
 
+### Saving power in the small panes
+
+The small panes' displays refresh at 30 frames per second, which looks the same at their size; an app moved to the main pane gets the full rate again. Apps that need no live picture there (shopping, delivery, reading, documents) can be set to pause, in Settings under Pause apps or by long-pressing a small pane and releasing without dragging. Such an app pauses after 5 idle seconds in a small pane: the picture stops on its last frame with a pause mark in the corner, and the app no longer runs. Tap the pane and it returns to the main pane, running again at once. Nothing pauses by default, and an app that is playing audio or video, in a call, or in the top wide pane never pauses.
+
 ### Favourite apps
 
 A row of favourite apps sits at the top: the ones you pin in Settings come first (pin as many as you like), and your most-used apps of the last seven days fill the row up to ten. Tap an icon to open it in the main pane, or long-press and drag it onto a small pane to open it there. The "+" on an empty pane adds an app too: the current main app moves into that pane, and the next app you pick from the Home screen opens in the main pane.
@@ -119,6 +123,7 @@ Open Panes from its Home screen icon. One page, seven groups:
 | Favourite apps | Pick and order the favourites row; close the previous app when switching |
 | Scenes | View and delete scenes, pin them to the Home screen, restore deleted default scenes |
 | Layout | Follow system / light / dark, small panes left / right, controls top / bottom |
+| Pause apps | Choose the apps that pause after 5 idle seconds in a small pane, with recommendations |
 | Opening the workspace | Quick Settings tile, bottom-corner gesture |
 | Privacy | Hide workspace apps from Recents |
 | Troubleshooting | Export diagnostics, exit small-window mode |

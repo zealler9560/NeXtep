@@ -36,6 +36,7 @@ class SlotTaskCoordinator(
     private val onContentDragStarted: () -> Unit = {},
     private val onContentDragEntered: (Int) -> Unit = {},
     private val onContentDragEnded: (Boolean) -> Unit = {},
+    private val pauseRules: SlotPauseRules? = null,
 ) : VirtualDisplaySlot.Listener, TaskSwitcherView.Listener {
     internal data class ContentExchange(val slot: Int, val sourceTask: Int, val targetTask: Int)
 
@@ -399,6 +400,70 @@ class SlotTaskCoordinator(
 
     private var reconcilePaused = false
 
+    private val pauseChecks = slots.indices.map { index -> Runnable { evaluatePause(index) } }
+    /** The last reason each pane stayed live, so a lasting reason is logged once. */
+    private val pauseBlockers = arrayOfNulls<String>(slots.size)
+
+    private fun schedulePauseCheck(index: Int) {
+        if (pauseRules == null) return
+        handler.removeCallbacks(pauseChecks[index])
+        handler.postDelayed(pauseChecks[index], PAUSE_IDLE_MS)
+    }
+
+    /** Five idle seconds after an app reaches a side pane, pause it if the user chose so and nothing needs it live. */
+    private fun evaluatePause(index: Int) {
+        val rules = pauseRules ?: return
+        val slot = slots[index]
+        val occupied = slotRecords[index].state as? SlotState.Occupied ?: return
+        if (!active || suspended || slot.isPaused()) return
+        // An exchange, launch, recent pick or drag is using the panes; look again once it is over.
+        if (transitionInProgress || recentSelectionPending || appLaunch.running || activeDrag != null) {
+            schedulePauseCheck(index)
+            return
+        }
+        val packageName = occupied.component.packageName
+        val blocker = rules.blocker(index, packageName)
+        if (blocker != pauseBlockers[index]) {
+            pauseBlockers[index] = blocker
+            if (blocker != null && blocker != SlotPauseRules.NOT_CHOSEN) {
+                NeXtepLog.info("slot_pause", "Kept live slot=$index package=$packageName reason=$blocker")
+            }
+        }
+        when (blocker) {
+            null -> if (!slot.pause(slot.view.captureCardPreview())) schedulePauseCheck(index)
+            SlotPauseRules.NOT_CHOSEN -> Unit
+            // Media, a call or the wide pane may end; look again.
+            else -> schedulePauseCheck(index)
+        }
+    }
+
+    /** The chosen apps changed: panes no longer chosen run again; the others are looked at shortly. */
+    fun refreshPause() {
+        ensureMainThread()
+        if (!active || pauseRules == null) return
+        slotRecords.forEachIndexed { index, record ->
+            val occupied = record.state as? SlotState.Occupied ?: return@forEachIndexed
+            if (slots[index].isPaused() &&
+                pauseRules.blocker(index, occupied.component.packageName) == SlotPauseRules.NOT_CHOSEN) {
+                slots[index].resume("choice changed")
+            }
+            pauseBlockers[index] = null
+            schedulePauseCheck(index)
+        }
+    }
+
+    /** The app in a side pane, for its long-press choice. */
+    fun slotComponent(index: Int): ComponentName? = (slotRecords.getOrNull(index)?.state as? SlotState.Occupied)?.component
+
+    /** What the usage probe samples: the main pane's app and each side pane's. */
+    internal fun usagePanes(): List<SlotUsageProbe.Pane> = buildList {
+        mainTaskPresenter.currentTaskId()?.let { add(SlotUsageProbe.Pane("main", it, false, null)) }
+        slotRecords.forEachIndexed { index, record ->
+            val occupied = record.state as? SlotState.Occupied ?: return@forEachIndexed
+            add(SlotUsageProbe.Pane("s$index", occupied.taskId, slots[index].isPaused(), slots[index].refreshRate()))
+        }
+    }
+
     /** Stop foreground fitting while the workspace exits; the deferred deactivate follows. */
     fun pauseReconciliation() {
         reconcilePaused = true
@@ -486,6 +551,7 @@ class SlotTaskCoordinator(
         mainSelectionGeneration += 1
         clearPromotedTaskRecovery()
         handler.removeCallbacksAndMessages(null)
+        pauseBlockers.fill(null)
         slots.forEach { it.view.setBusy(false) }
         slotRecords.forEach { record ->
             record.pendingComponent = null
@@ -523,7 +589,8 @@ class SlotTaskCoordinator(
             record.preview = null
             if (task == null || !saved.add(task.taskId)) return@forEachIndexed
             // Taken while the task still draws on its slot; the next entry shows it until the app redraws.
-            val preview = slot.view.captureProtectedPreview()
+            // Card-sized: the capture is half the task's size.
+            val preview = slot.view.captureCardPreview()
             runCatching {
                 val layout = record.originalLayout ?: defaultMainLayout(task.resizeMode)
                 WindowContainerTransactionCompat.parkInDefaultDisplay(
@@ -537,16 +604,7 @@ class SlotTaskCoordinator(
                     .firstOrNull { it.taskId == task.taskId }
                 record.exitTask = recent
                 record.retainedTaskId = recent?.taskId
-                record.preview = if (recent == null) null else preview?.let { full ->
-                    // Keep the card-sized copy only; the capture is half the task's size.
-                    val card = slot.view
-                    val width = card.textureView.width
-                    val height = card.textureView.height
-                    // An unmeasured view: keep the capture as is, the cover scales it to fit.
-                    if (width <= 0 || height <= 0) full
-                    else android.graphics.Bitmap.createScaledBitmap(full, width, height, true)
-                        .also { if (it !== full) full.recycle() }
-                } ?: previousCover?.takeIf { recent != null }
+                record.preview = if (recent == null) null else preview ?: previousCover
                 NeXtepLog.info("slot_retention", "Parked slot=$index task=${recent?.taskId} " +
                     "preview=${record.preview?.let { "${it.width}x${it.height}" }}")
             }.onFailure {
@@ -621,6 +679,8 @@ class SlotTaskCoordinator(
             slots.forEach { it.view.setBusy(false) }
             handler.removeCallbacks(reconciliation)
             handler.post(reconciliation)
+            // The lock cleared the pending checks.
+            slots.indices.forEach(::schedulePauseCheck)
         }
     }
 
@@ -1846,12 +1906,16 @@ class SlotTaskCoordinator(
                 reconcile("settled $label")
                 NeXtepLog.info("slot_coordinator", "Transition settled $label")
             }, SETTLE_DELAY_MS)
+            slots.indices.forEach(::schedulePauseCheck)
             // Cancellation may start a reverse exchange in this callback.
             completed(result)
         }
         fun performMove(reveal: () -> Unit = {}): Result<Unit> {
             val result = runCatching {
                 check(active && !suspended) { "Workspace is no longer interactive" }
+                // Tasks move onto these displays; one that is off would leave its app stopped.
+                // The animation above has already taken the paused panes' held pictures.
+                slots.forEach { it.resume("transition") }
                 operation()
             }
             val pending = deferredMove
@@ -2458,6 +2522,13 @@ class SlotTaskCoordinator(
         slotRecords[index].state = state
         if (state !is SlotState.Occupied) slotRecords[index].mismatchSince = 0L
         slots[index].view.showState(state)
+        // A pane's pause belongs to its app: a new app (or none) runs, and a new app gets its five seconds.
+        val occupant = (state as? SlotState.Occupied)?.taskId
+        if (pauseRules != null && occupant != (previous as? SlotState.Occupied)?.taskId) {
+            slots[index].resume("pane changed")
+            pauseBlockers[index] = null
+            if (occupant != null) schedulePauseCheck(index) else handler.removeCallbacks(pauseChecks[index])
+        }
         if (previous != state) {
             NeXtepLog.info(
                 "slot_state",
@@ -2479,6 +2550,8 @@ class SlotTaskCoordinator(
     }
 
     private companion object {
+        /** Idle time in a side pane before an app chosen for pausing is paused. */
+        const val PAUSE_IDLE_MS = 5_000L
         const val SETTLE_DELAY_MS = 700L
         /** The rail's entry animation is 240 ms; retained tasks come back once it has settled. */
         const val REBIND_AFTER_ENTRY_MS = 320L

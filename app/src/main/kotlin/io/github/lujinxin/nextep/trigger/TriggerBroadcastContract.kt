@@ -41,10 +41,14 @@ object TriggerBroadcastContract {
     const val EXTRA_SIDEBAR_SIDE = "io.github.yishisanren.panes.extra.WORKBENCH_SIDEBAR_SIDE"
     const val EXTRA_HIDE_RECENTS = "io.github.yishisanren.panes.extra.WORKBENCH_HIDE_RECENTS"
     const val EXTRA_CONTROL_BOTTOM = "io.github.yishisanren.panes.extra.WORKBENCH_CONTROL_BOTTOM"
+    /** Comma-separated packages that pause in a side pane. */
+    const val EXTRA_PAUSED_APPS = "io.github.yishisanren.panes.extra.WORKBENCH_PAUSED_APPS"
     const val COMMAND_APPEARANCE = "appearance"
     const val COMMAND_SIDEBAR_SIDE = "sidebar_side"
     const val COMMAND_HIDE_RECENTS = "hide_recents"
     const val COMMAND_CONTROL_BOTTOM = "control_bottom"
+    /** "<package>=true|false". */
+    const val COMMAND_PAUSE_APP = "pause_app"
     const val COMMAND_EXPORT_DIAGNOSTICS = "export_diagnostics"
     const val EXTRA_SCENES = "io.github.yishisanren.panes.extra.WORKBENCH_SCENES"
     const val COMMAND_SCENE_SAVE = "scene_save"
