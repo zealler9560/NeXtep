@@ -2152,7 +2152,7 @@ class SlotTaskCoordinator(
                 }
             }
         }
-        mainTaskPresenter.reconcileForeground(geometryProvider())
+        presentForeground(taskRepository.runningTasks())
             .onFailure { error ->
                 NeXtepLog.warn(
                     "main_task_presenter",
@@ -2323,15 +2323,7 @@ class SlotTaskCoordinator(
         // Reuse this pass's snapshot. A fullscreen promotion restores layout, so that path
         // needs a fresh query before the presenter reads windowing mode/bounds.
         val presentationTasks = if (promotedSlot >= 0) taskRepository.runningTasks() else tasks
-        // A cold-starting app cannot be presented until its window exists; the main app it replaces is
-        // remembered over those failed passes (the presenter has let go of it already).
-        val previousMain = mainTaskPresenter.currentTaskId() ?: replacedMain
-        mainTaskPresenter.reconcileForeground(geometryProvider(), presentationTasks)
-            .onSuccess {
-                replacedMain = null
-                scheduleAutoMinimize(previousMain, foreground)
-            }
-            .onFailure { replacedMain = previousMain }
+        presentForeground(presentationTasks)
             .onFailure { error ->
                 NeXtepLog.warn(
                     "main_task_presenter",
@@ -2339,6 +2331,22 @@ class SlotTaskCoordinator(
                     error,
                 )
             }
+    }
+
+    /**
+     * Shows Display 0's foreground app in the main pane; the main app it replaced goes to an empty pane
+     * (see scheduleAutoMinimize). Both reconciliation passes come through here, whichever presents first.
+     * A cold-starting app cannot be presented until its window exists; the main app it replaces is
+     * remembered over those failed passes (the presenter has let go of it already).
+     */
+    private fun presentForeground(tasks: List<TaskRepository.TaskSnapshot>): Result<Unit> {
+        val previousMain = mainTaskPresenter.currentTaskId() ?: replacedMain
+        return mainTaskPresenter.reconcileForeground(geometryProvider(), tasks)
+            .onSuccess {
+                replacedMain = null
+                tasks.firstOrNull { it.displayId == Display.DEFAULT_DISPLAY }?.let { scheduleAutoMinimize(previousMain, it) }
+            }
+            .onFailure { replacedMain = previousMain }
     }
 
     private fun normalizeLaunchIntent(source: Intent): Intent? {
