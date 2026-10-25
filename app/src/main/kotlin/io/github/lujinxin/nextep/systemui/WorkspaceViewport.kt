@@ -63,6 +63,7 @@ internal class WorkspaceViewport(
     private var wideAspect = WorkspaceLayoutProfile.DEFAULT_WIDE_ASPECT
     private var controlAtBottom = false
     private var statusBar = 0
+    private var gestureBar = true
     private val notifyChanged = Runnable { onChanged() }
     private val displayManager = context.getSystemService(DisplayManager::class.java)
 
@@ -143,15 +144,17 @@ internal class WorkspaceViewport(
         // Three-button navigation is read from the system each time; the old manual switch still forces it.
         val buttons = navigationButtonsEnabled || threeButtonNavigation()
         val prefix = if (buttons) BUTTONS_PREFIX else FULL_PREFIX
+        // A gesture handle the user hid leaves a zero-height navigation bar; the panes then reach lower.
+        gestureBar = buttons || gestureHandleShown()
         val key = "$prefix${metrics.widthPixels}:${metrics.heightPixels}:" +
-            "${metrics.densityDpi}:$rotation"
+            "${metrics.densityDpi}:$rotation" + if (gestureBar) "" else ":nohandle"
         if (cachedKey == key && cached != null) return
         val encoded = runCatching { preferences?.getString(key, null) }.getOrNull()
         // The main app keeps the bottom of its status band as a gap below the strip; only the rest is cropped.
         statusBar = (measureStatusBar(metrics.density) -
             (WorkspaceControlMetrics.STATUS_KEEP_DP * metrics.density).roundToInt()).coerceAtLeast(0)
         // A record solved without this status band fails decode's re-encode check and is measured again.
-        val savedProfile = WorkspaceLayoutProfile.decode(encoded, statusBar)?.takeIf {
+        val savedProfile = WorkspaceLayoutProfile.decode(encoded, statusBar, gestureBar)?.takeIf {
             it.wideSlotIndex == null && (buttons || it.geometry.navigationInsets == WorkspaceNavigationInsets())
         }?.let { it.copy(geometry = it.geometry.copy(displayRotation = rotation)) }
         if (savedProfile != null) {
@@ -196,7 +199,7 @@ internal class WorkspaceViewport(
         if (cached != snapshot || profile == null) {
             baseProfile = saved ?: WorkspaceLayoutProfile.create(snapshot.width, snapshot.height,
                 (snapshot.density * 160).roundToInt(), snapshot.navigationInsets, snapshot.displayRotation,
-                statusBar = statusBar)
+                statusBar = statusBar, gestureBar = gestureBar)
             profile = checkNotNull(baseProfile).withWideSlot(wideSlotIndex, wideAspect).withControlAtBottom(controlAtBottom)
             SystemServerWorkspaceBridge.publishLayout(context, checkNotNull(profile))
         }
@@ -207,6 +210,11 @@ internal class WorkspaceViewport(
     private fun threeButtonNavigation(): Boolean = runCatching {
         android.provider.Settings.Secure.getInt(context.contentResolver, "navigation_mode", -1) == 0
     }.getOrDefault(false)
+
+    private fun gestureHandleShown(): Boolean = runCatching {
+        context.getSystemService(WindowManager::class.java).maximumWindowMetrics.windowInsets
+            .getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars()).bottom > 0
+    }.getOrDefault(true)
 
     /** The status bar's height even while hidden: the blank band every app keeps at its top. */
     private fun measureStatusBar(density: Float): Int = runCatching {

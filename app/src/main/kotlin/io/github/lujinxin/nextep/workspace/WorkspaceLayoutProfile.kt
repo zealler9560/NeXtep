@@ -13,6 +13,8 @@ data class WorkspaceLayoutProfile(
     val wideAspect: Double = DEFAULT_WIDE_ASPECT,
     /** The measured status bar height less the kept gap; not recorded, a record is checked against it on reading. */
     val statusBar: Int = 0,
+    /** Whether gesture navigation shows its handle; not recorded either, a record is checked against it. */
+    val gestureBar: Boolean = true,
 ) {
     /** The whole status bar: the inset a pane's display provides so apps lay out as on the phone's. */
     val statusBarHeight: Int get() = if (statusBar == 0) 0 else
@@ -82,18 +84,18 @@ data class WorkspaceLayoutProfile(
     fun withControlAtBottom(bottom: Boolean): WorkspaceLayoutProfile {
         if (bottom == geometry.controlAtBottom) return this
         return create(geometry.screenWidth, geometry.screenHeight, densityDpi, geometry.navigationInsets,
-            geometry.displayRotation, bottom, statusBar).withWideSlot(wideSlotIndex, wideAspect)
+            geometry.displayRotation, bottom, statusBar, gestureBar).withWideSlot(wideSlotIndex, wideAspect)
     }
 
     fun withWideSlot(index: Int?, aspect: Double = DEFAULT_WIDE_ASPECT): WorkspaceLayoutProfile {
         if (index == null && wideSlotIndex == null) return this
         val normal = create(geometry.screenWidth, geometry.screenHeight, densityDpi,
-            geometry.navigationInsets, geometry.displayRotation, geometry.controlAtBottom, statusBar)
+            geometry.navigationInsets, geometry.displayRotation, geometry.controlAtBottom, statusBar, gestureBar)
         if (index == null) return normal
         // A picture at the top keeps the status strip inside the control strip (wideStatus), and the
         // main app lays out at its own canvas there: nothing is cropped.
         val base = if (geometry.controlAtBottom) normal else create(geometry.screenWidth, geometry.screenHeight,
-            densityDpi, geometry.navigationInsets, geometry.displayRotation).copy(statusBar = statusBar)
+            densityDpi, geometry.navigationInsets, geometry.displayRotation).copy(statusBar = statusBar, gestureBar = gestureBar)
         val clamped = aspect.coerceIn(MIN_WIDE_ASPECT, MAX_WIDE_ASPECT)
         val g = base.geometry
         val short = minOf(g.availableWidth, g.availableHeight)
@@ -170,15 +172,15 @@ data class WorkspaceLayoutProfile(
         const val MAX_WIDE_ASPECT = 2.4
 
         fun create(width: Int, height: Int, densityDpi: Int, insets: WorkspaceNavigationInsets,
-            displayRotation: Int = 0, controlAtBottom: Boolean = false, statusBar: Int = 0) =
+            displayRotation: Int = 0, controlAtBottom: Boolean = false, statusBar: Int = 0, gestureBar: Boolean = true) =
             WorkspaceLayoutProfile(WorkspaceGeometry.forDisplay(width, height, density = densityDpi / 160f,
                 navigationInsets = insets, displayRotation = displayRotation, controlAtBottom = controlAtBottom,
-                statusInset = statusBar),
+                statusInset = statusBar, gestureBar = gestureBar),
                 densityDpi, (WorkspaceControlMetrics.RAIL_GAP_DP * densityDpi / 160f).toInt().coerceAtLeast(1),
-                statusBar = statusBar)
+                statusBar = statusBar, gestureBar = gestureBar)
 
-        /** [statusBar] is today's measured height: a record solved for another one (or none) is rejected. */
-        fun decode(encoded: String?, statusBar: Int = 0): WorkspaceLayoutProfile? = runCatching {
+        /** [statusBar] and [gestureBar] are today's: a record solved for others is rejected. */
+        fun decode(encoded: String?, statusBar: Int = 0, gestureBar: Boolean = true): WorkspaceLayoutProfile? = runCatching {
             val p = encoded?.split(',') ?: return@runCatching null
             val wide = p.firstOrNull() == WIDE_VERSION
             if (!wide && p.firstOrNull() != NORMAL_VERSION ||
@@ -191,8 +193,9 @@ data class WorkspaceLayoutProfile(
                 // The band a portrait record was solved below; a wide record keeps it in its strip.
                 statusInset = if (portrait && !wide) statusBar else 0,
                 bottomGap = WorkspaceGeometry.gestureGap(portrait, false,
-                    if (wide) 0 else statusBar, p[10].toInt(), p[5].toInt() / 160f)),
-                p[5].toInt(), p[6].toInt(), if (wide) p.last().toInt() else null, statusBar = statusBar)
+                    if (wide) 0 else statusBar, p[10].toInt(), p[5].toInt() / 160f, gestureBar)),
+                p[5].toInt(), p[6].toInt(), if (wide) p.last().toInt() else null, statusBar = statusBar,
+                gestureBar = gestureBar)
             if (profile.encode() != encoded) return@runCatching null
             if (!wide) profile else profile.copy(geometry = profile.geometry.copy(mainCanvasHeight =
                 if (profile.geometry.isLandscape) 0 else wideMainCanvasHeight(profile.geometry)))
