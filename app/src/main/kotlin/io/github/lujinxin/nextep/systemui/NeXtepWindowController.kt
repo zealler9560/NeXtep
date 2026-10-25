@@ -138,7 +138,7 @@ class NeXtepWindowController(
     }
     private var recentsHidden = workbenchPreferences?.getBoolean("hide_recents", false) ?: false
     private var controlAtBottom = workbenchPreferences?.getBoolean("control_bottom", false) ?: false
-    /** Packages that pause after five idle seconds in a side pane; chosen in settings or by a long press. */
+    /** Packages that pause after two idle seconds in a side pane; chosen in settings or by a long press. */
     private val pausedApps = workbenchPreferences?.getStringSet("paused_apps", null).orEmpty().toMutableSet()
     private val pauseRules = io.github.lujinxin.nextep.display.SlotPauseRules(context, { it in pausedApps }, { wideSlotIndex })
     private val usageProbe = io.github.lujinxin.nextep.display.SlotUsageProbe(context)

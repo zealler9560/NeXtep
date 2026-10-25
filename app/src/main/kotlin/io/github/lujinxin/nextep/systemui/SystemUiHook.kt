@@ -15,6 +15,7 @@ object SystemUiHook {
 
     fun install(module: XposedModule, classLoader: ClassLoader) {
         HookGuard.run("workspace_display_transition") { WorkspaceDisplayTransitionHook.install(module, classLoader) }
+        HookGuard.run("shell_transition") { ShellTransitionLog.install(module, classLoader) }
         HookGuard.run("task_surface_ownership") {
             val organizerClass = classLoader.loadClass("com.android.wm.shell.ShellTaskOrganizer")
             val methods = organizerClass.declaredMethods.filter {

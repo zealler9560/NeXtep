@@ -93,8 +93,8 @@
     <string name="scene_icon_life">生活</string>
     <string name="slot_paused">已暫停</string>
     <string name="pause_apps_title">暫停應用</string>
-    <string name="pause_apps_summary">已選 %1$d 個。放進側邊小窗、停手 5 秒後暫停，點一下回到大窗立即恢復；也可以長按小窗設定。</string>
-    <string name="pause_apps_description">選中的應用在側邊小窗裡停手 5 秒後暫停，不再耗電；點一下小窗回到大窗，立即恢復執行。正在播放影音、正在通話或在頂部寬窗裡時不會暫停。</string>
+    <string name="pause_apps_summary">已選 %1$d 個。放進側邊小窗、停手 2 秒後暫停，點一下回到大窗立即恢復；也可以長按小窗設定。</string>
+    <string name="pause_apps_description">選中的應用在側邊小窗裡停手 2 秒後暫停，不再耗電；點一下小窗回到大窗，立即恢復執行。正在播放影音、正在通話或在頂部寬窗裡時不會暫停。</string>
     <string name="pause_apps_recommended">推薦</string>
     <string name="pause_apps_recommended_note">遊戲、影片、音樂、地圖和聊天類不在推薦裡：遊戲暫停後可能被系統清理或斷線，聊天在小窗裡看不到新訊息。</string>
     <string name="pause_apps_recommended_none">這支手機上沒有推薦的應用。</string>

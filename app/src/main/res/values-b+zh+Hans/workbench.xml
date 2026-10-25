@@ -93,8 +93,8 @@
     <string name="scene_icon_life">生活</string>
     <string name="slot_paused">已暂停</string>
     <string name="pause_apps_title">暂停应用</string>
-    <string name="pause_apps_summary">已选 %1$d 个。放进侧边小窗、停手 5 秒后暂停，点一下回到大窗立即恢复；也可以长按小窗设置。</string>
-    <string name="pause_apps_description">选中的应用在侧边小窗里停手 5 秒后暂停，不再耗电；点一下小窗回到大窗，立即恢复运行。正在播放音视频、正在通话或在顶部宽窗里时不会暂停。</string>
+    <string name="pause_apps_summary">已选 %1$d 个。放进侧边小窗、停手 2 秒后暂停，点一下回到大窗立即恢复；也可以长按小窗设置。</string>
+    <string name="pause_apps_description">选中的应用在侧边小窗里停手 2 秒后暂停，不再耗电；点一下小窗回到大窗，立即恢复运行。正在播放音视频、正在通话或在顶部宽窗里时不会暂停。</string>
     <string name="pause_apps_recommended">推荐</string>
     <string name="pause_apps_recommended_note">游戏、视频、音乐、地图和聊天类不在推荐里：游戏暂停后可能被系统清理或掉线，聊天在小窗里看不到新消息。</string>
     <string name="pause_apps_recommended_none">这台手机上没有推荐的应用。</string>

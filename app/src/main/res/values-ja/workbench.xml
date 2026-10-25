@@ -92,8 +92,8 @@
     <string name="scene_icon_life">暮らし</string>
     <string name="slot_paused">一時停止中</string>
     <string name="pause_apps_title">アプリを一時停止</string>
-    <string name="pause_apps_summary">%1$d 個を選択中。サイドの小窓で 5 秒操作しないと一時停止し、タップすると大窓に戻ってすぐ再開します。小窓の長押しでも設定できます。</string>
-    <string name="pause_apps_description">選んだアプリはサイドの小窓で 5 秒操作しないと一時停止し、電力を使いません。小窓をタップすると大窓に戻り、すぐに再開します。音声・動画の再生中、通話中、上部のワイド窓にあるときは一時停止しません。</string>
+    <string name="pause_apps_summary">%1$d 個を選択中。サイドの小窓で 2 秒操作しないと一時停止し、タップすると大窓に戻ってすぐ再開します。小窓の長押しでも設定できます。</string>
+    <string name="pause_apps_description">選んだアプリはサイドの小窓で 2 秒操作しないと一時停止し、電力を使いません。小窓をタップすると大窓に戻り、すぐに再開します。音声・動画の再生中、通話中、上部のワイド窓にあるときは一時停止しません。</string>
     <string name="pause_apps_recommended">おすすめ</string>
     <string name="pause_apps_recommended_note">ゲーム、動画、音楽、地図、チャットはおすすめに含めません。一時停止したゲームはシステムに終了されたり接続が切れたりすることがあり、チャットは小窓で新着メッセージが見えません。</string>
     <string name="pause_apps_recommended_none">この端末におすすめのアプリはありません。</string>

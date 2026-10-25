@@ -92,8 +92,8 @@
     <string name="scene_icon_life">생활</string>
     <string name="slot_paused">일시 중지됨</string>
     <string name="pause_apps_title">앱 일시 중지</string>
-    <string name="pause_apps_summary">%1$d개 선택됨. 사이드 작은 창에서 5초 동안 조작하지 않으면 일시 중지되고, 탭하면 큰 창으로 돌아와 바로 다시 실행됩니다. 작은 창을 길게 눌러도 설정할 수 있습니다.</string>
-    <string name="pause_apps_description">선택한 앱은 사이드 작은 창에서 5초 동안 조작하지 않으면 일시 중지되어 전력을 쓰지 않습니다. 작은 창을 탭하면 큰 창으로 돌아와 바로 다시 실행됩니다. 오디오·동영상 재생 중, 통화 중이거나 위쪽 와이드 창에 있을 때는 일시 중지하지 않습니다.</string>
+    <string name="pause_apps_summary">%1$d개 선택됨. 사이드 작은 창에서 2초 동안 조작하지 않으면 일시 중지되고, 탭하면 큰 창으로 돌아와 바로 다시 실행됩니다. 작은 창을 길게 눌러도 설정할 수 있습니다.</string>
+    <string name="pause_apps_description">선택한 앱은 사이드 작은 창에서 2초 동안 조작하지 않으면 일시 중지되어 전력을 쓰지 않습니다. 작은 창을 탭하면 큰 창으로 돌아와 바로 다시 실행됩니다. 오디오·동영상 재생 중, 통화 중이거나 위쪽 와이드 창에 있을 때는 일시 중지하지 않습니다.</string>
     <string name="pause_apps_recommended">추천</string>
     <string name="pause_apps_recommended_note">게임, 동영상, 음악, 지도, 채팅 앱은 추천하지 않습니다. 일시 중지된 게임은 시스템이 종료하거나 연결이 끊길 수 있고, 채팅은 작은 창에서 새 메시지가 보이지 않습니다.</string>
     <string name="pause_apps_recommended_none">이 휴대폰에는 추천 앱이 없습니다.</string>

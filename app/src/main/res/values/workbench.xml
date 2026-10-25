@@ -93,8 +93,8 @@
     <string name="scene_icon_life">Life</string>
     <string name="slot_paused">Paused</string>
     <string name="pause_apps_title">Pause apps</string>
-    <string name="pause_apps_summary">%1$d chosen. They pause after 5 idle seconds in a side window; tap the window to bring one back to the main window at once. A long press on a side window also sets this.</string>
-    <string name="pause_apps_description">Chosen apps pause after 5 idle seconds in a side window and stop using power. Tap the window and the app returns to the main window, running again at once. An app playing audio or video, in a call, or in the top wide window is never paused.</string>
+    <string name="pause_apps_summary">%1$d chosen. They pause after 2 idle seconds in a side window; tap the window to bring one back to the main window at once. A long press on a side window also sets this.</string>
+    <string name="pause_apps_description">Chosen apps pause after 2 idle seconds in a side window and stop using power. Tap the window and the app returns to the main window, running again at once. An app playing audio or video, in a call, or in the top wide window is never paused.</string>
     <string name="pause_apps_recommended">Recommended</string>
     <string name="pause_apps_recommended_note">Games, video, music, maps and chat are not recommended: a paused game may be closed by the system or drop its match, and a paused chat shows no new messages.</string>
     <string name="pause_apps_recommended_none">None of the apps on this phone are recommended.</string>

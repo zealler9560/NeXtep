@@ -35,7 +35,7 @@ The main pane is the app you are using. The four small panes beside it are four 
 
 ### Saving power in the small panes
 
-The small panes' displays refresh at 30 frames per second, which looks the same at their size; an app moved to the main pane gets the full rate again. Apps that need no live picture there (shopping, delivery, reading, documents) can be set to pause, in Settings under Pause apps or by long-pressing a small pane and releasing without dragging. Such an app pauses after 5 idle seconds in a small pane: the picture stops on its last frame with a pause mark in the corner, and the app no longer runs. Tap the pane and it returns to the main pane, running again at once. Nothing pauses by default, and an app that is playing audio or video, in a call, or in the top wide pane never pauses.
+The small panes' displays refresh at 30 frames per second, which looks the same at their size; an app moved to the main pane gets the full rate again. Apps that need no live picture there (shopping, delivery, reading, documents) can be set to pause, in Settings under Pause apps or by long-pressing a small pane and releasing without dragging. Such an app pauses after 2 idle seconds in a small pane: the picture stops on its last frame with a pause mark in the corner, and the app no longer runs. Tap the pane and it returns to the main pane, running again at once. Nothing pauses by default, and an app that is playing audio or video, in a call, or in the top wide pane never pauses.
 
 ### Favourite apps
 
@@ -123,7 +123,7 @@ Open Panes from its Home screen icon. One page, seven groups:
 | Favourite apps | Pick and order the favourites row; close the previous app when switching |
 | Scenes | View and delete scenes, pin them to the Home screen, restore deleted default scenes |
 | Layout | Follow system / light / dark, small panes left / right, controls top / bottom |
-| Pause apps | Choose the apps that pause after 5 idle seconds in a small pane, with recommendations |
+| Pause apps | Choose the apps that pause after 2 idle seconds in a small pane, with recommendations |
 | Opening the workspace | Quick Settings tile, bottom-corner gesture |
 | Privacy | Hide workspace apps from Recents |
 | Troubleshooting | Export diagnostics, exit small-window mode |

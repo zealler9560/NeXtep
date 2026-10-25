@@ -19,6 +19,9 @@ class VirtualDisplaySlot(
         /** Two frames for a reconnected output to show the app. */
         const val OUTPUT_REBIND_SETTLE_MS = 40L
         const val PARKED_DISPLAY_RELEASE_MS = 60_000L
+        /** Enough frames for a reconnected empty display to have replaced the old picture, if it will. */
+        const val STALE_FRAME_CHECK_MS = 300L
+        const val STALE_FRAME_SPREAD = 24
         val creator: java.util.concurrent.ExecutorService =
             java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "NeXtep-VirtualDisplay") }
     }
@@ -178,6 +181,48 @@ class VirtualDisplaySlot(
         }.onFailure {
             probe.recycle()
             done()
+        }
+    }
+
+    /**
+     * An emptied pane: its output can keep the last app's frame, which on ColorOS 16 showed faintly
+     * through the frosted card. A reconnect drops it. The output is probed before and after, for the log.
+     */
+    fun dropStaleFrame() {
+        if (virtualDisplay == null || !active || suspended || paused) return
+        probeOutput { before ->
+            if (!before.startsWith("content")) {
+                NeXtepLog.info("slot_output", "Emptied slot=$index before=$before alpha=${view.textureView.alpha}")
+                return@probeOutput
+            }
+            rebindOutput()
+            mainHandler.postDelayed({
+                probeOutput { after ->
+                    NeXtepLog.info("slot_output", "Emptied slot=$index before=$before after=$after alpha=${view.textureView.alpha}")
+                }
+            }, STALE_FRAME_CHECK_MS)
+        }
+    }
+
+    private fun probeOutput(report: (String) -> Unit) {
+        val output = view.textureView
+        if (!output.holder.surface.isValid) return report("no surface")
+        val probe = android.graphics.Bitmap.createBitmap(9, 16, android.graphics.Bitmap.Config.ARGB_8888)
+        runCatching {
+            android.view.PixelCopy.request(output, probe, { result ->
+                val summary = if (result != android.view.PixelCopy.SUCCESS) "result=$result" else {
+                    val pixels = IntArray(probe.width * probe.height).also { probe.getPixels(it, 0, probe.width, 0, 0, probe.width, probe.height) }
+                    val luma = pixels.map { (android.graphics.Color.red(it) * 3 + android.graphics.Color.green(it) * 6 + android.graphics.Color.blue(it)) / 10 }
+                    val spread = luma.max() - luma.min()
+                    // A flat (black or single-colour) frame is no picture of an app.
+                    "${if (spread > STALE_FRAME_SPREAD) "content" else "flat"} mean=${luma.average().toInt()} spread=$spread"
+                }
+                probe.recycle()
+                report(summary)
+            }, mainHandler)
+        }.onFailure {
+            probe.recycle()
+            report("copy failed")
         }
     }
 

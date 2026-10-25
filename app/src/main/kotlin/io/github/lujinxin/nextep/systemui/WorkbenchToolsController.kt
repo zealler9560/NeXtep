@@ -390,7 +390,7 @@ internal class WorkbenchToolsController(
 
     fun message(text: String) = Toast.makeText(context, text, Toast.LENGTH_LONG).show()
 
-    /** Long-press menu of a side pane: keep its app live there, or pause it after five idle seconds. */
+    /** Long-press menu of a side pane: keep its app live there, or pause it after two idle seconds. */
     fun showPauseChoice(title: String, paused: Boolean, game: Boolean, choose: (Boolean) -> Unit) {
         dismiss()
         val a = appearance()

@@ -362,6 +362,7 @@ class SlotTaskCoordinator(
     /** Preserve the old task in recents, below the main app. Never force-stop
      * or remove it just to make room for an explicitly requested search. */
     private fun replaceSearchDestination(index: Int, intent: Intent) {
+        wakePane(index, "replaced")
         val display = checkNotNull(slots[index].displayId())
         val targetUser = io.github.lujinxin.nextep.framework.TaskInfoCompat.userIdentifier(
             intent.targetUser() ?: android.os.Process.myUserHandle())
@@ -400,25 +401,42 @@ class SlotTaskCoordinator(
 
     private var reconcilePaused = false
 
+    private val staleFrameChecks = slots.indices.map { index -> Runnable { dropStaleFrame(index) } }
+
+    /** After an app left a pane, and once no exchange is moving tasks, drop its last frame from the output. */
+    private fun dropStaleFrame(index: Int) {
+        if (!active || suspended || slotRecords[index].state is SlotState.Occupied) return
+        if (transitionInProgress) {
+            handler.postDelayed(staleFrameChecks[index], STALE_FRAME_DELAY_MS)
+            return
+        }
+        slots[index].dropStaleFrame()
+    }
+
     private val pauseChecks = slots.indices.map { index -> Runnable { evaluatePause(index) } }
     /** The last reason each pane stayed live, so a lasting reason is logged once. */
     private val pauseBlockers = arrayOfNulls<String>(slots.size)
 
-    private fun schedulePauseCheck(index: Int) {
+    private fun schedulePauseCheck(index: Int, delayMs: Long = PAUSE_IDLE_MS) {
         if (pauseRules == null) return
         handler.removeCallbacks(pauseChecks[index])
-        handler.postDelayed(pauseChecks[index], PAUSE_IDLE_MS)
+        handler.postDelayed(pauseChecks[index], delayMs)
     }
 
-    /** Five idle seconds after an app reaches a side pane, pause it if the user chose so and nothing needs it live. */
+    /** A task is about to enter or leave this pane's display, which must be on for it. */
+    private fun wakePane(index: Int, reason: String) {
+        if (index in slots.indices) slots[index].resume(reason)
+    }
+
+    /** Two idle seconds after an app reaches a side pane, pause it if the user chose so and nothing needs it live. */
     private fun evaluatePause(index: Int) {
         val rules = pauseRules ?: return
         val slot = slots[index]
         val occupied = slotRecords[index].state as? SlotState.Occupied ?: return
         if (!active || suspended || slot.isPaused()) return
-        // An exchange, launch, recent pick or drag is using the panes; look again once it is over.
+        // An exchange, launch, recent pick or drag is using the panes; look again just after it.
         if (transitionInProgress || recentSelectionPending || appLaunch.running || activeDrag != null) {
-            schedulePauseCheck(index)
+            schedulePauseCheck(index, PAUSE_BUSY_RETRY_MS)
             return
         }
         val packageName = occupied.component.packageName
@@ -1374,6 +1392,7 @@ class SlotTaskCoordinator(
     fun dismissDraggedSlot(drag: SlotTaskDrag): Boolean {
         if (activeDrag != drag || !matchesDrag(drag) || !active || suspended || recentSelectionPending) return false
         return runTransition("background slot=${drag.slotIndex} task=${drag.taskId}") {
+            wakePane(drag.slotIndex, "to background")
             val task = checkNotNull(taskRepository.findTask(drag.taskId))
             val record = slotRecords[drag.slotIndex]
             val layout = record.originalLayout ?: defaultMainLayout(task.resizeMode)
@@ -1432,6 +1451,8 @@ class SlotTaskCoordinator(
     }
 
     private fun swapSlots(sourceIndex: Int, targetIndex: Int) {
+        wakePane(sourceIndex, "swap panes")
+        wakePane(targetIndex, "swap panes")
         val sourceState = slotRecords[sourceIndex].state as SlotState.Occupied
         val targetState = slotRecords[targetIndex].state
         val sourceTask = checkNotNull(taskRepository.findTask(sourceState.taskId))
@@ -1765,6 +1786,8 @@ class SlotTaskCoordinator(
     }
 
     private fun swapWithMain(slotIndex: Int, occupied: SlotState.Occupied, settleTimeoutMs: Long = 1_500L) {
+        // The animation has already taken a paused pane's held picture.
+        wakePane(slotIndex, "swap with main")
         val tasks = taskRepository.runningTasks()
         val slotTask = tasks.firstOrNull { it.taskId == occupied.taskId }
             ?: error("Slot task ${occupied.taskId} exited")
@@ -1906,16 +1929,15 @@ class SlotTaskCoordinator(
                 reconcile("settled $label")
                 NeXtepLog.info("slot_coordinator", "Transition settled $label")
             }, SETTLE_DELAY_MS)
-            slots.indices.forEach(::schedulePauseCheck)
+            // A pane woken by this move starts its idle time now; the others keep theirs.
+            slots.indices.filter { !slots[it].isPaused() && !handler.hasCallbacks(pauseChecks[it]) }
+                .forEach(::schedulePauseCheck)
             // Cancellation may start a reverse exchange in this callback.
             completed(result)
         }
         fun performMove(reveal: () -> Unit = {}): Result<Unit> {
             val result = runCatching {
                 check(active && !suspended) { "Workspace is no longer interactive" }
-                // Tasks move onto these displays; one that is off would leave its app stopped.
-                // The animation above has already taken the paused panes' held pictures.
-                slots.forEach { it.resume("transition") }
                 operation()
             }
             val pending = deferredMove
@@ -2452,6 +2474,10 @@ class SlotTaskCoordinator(
         ?: WINDOWING_MODE_FULLSCREEN_FALLBACK
 
     private fun moveTaskToDisplayAndWait(taskId: Int, displayId: Int) {
+        // Both the pane the task leaves and the one it enters.
+        slotRecords.indices.filter {
+            slots[it].displayId() == displayId || (slotRecords[it].state as? SlotState.Occupied)?.taskId == taskId
+        }.forEach { wakePane(it, "task move") }
         TaskSurfaceCompat.markDisplayExchange(taskId, displayId)
         if (displayId == Display.DEFAULT_DISPLAY) {
             TaskSurfaceCompat.preparePromotion(taskId, geometryProvider()).onFailure {
@@ -2522,8 +2548,13 @@ class SlotTaskCoordinator(
         slotRecords[index].state = state
         if (state !is SlotState.Occupied) slotRecords[index].mismatchSince = 0L
         slots[index].view.showState(state)
-        // A pane's pause belongs to its app: a new app (or none) runs, and a new app gets its five seconds.
+        // A pane's pause belongs to its app: a new app (or none) runs, and a new app gets its two seconds.
         val occupant = (state as? SlotState.Occupied)?.taskId
+        if (previous is SlotState.Occupied && occupant == null) {
+            // Past the card's fade-out.
+            handler.removeCallbacks(staleFrameChecks[index])
+            handler.postDelayed(staleFrameChecks[index], STALE_FRAME_DELAY_MS)
+        }
         if (pauseRules != null && occupant != (previous as? SlotState.Occupied)?.taskId) {
             slots[index].resume("pane changed")
             pauseBlockers[index] = null
@@ -2551,7 +2582,10 @@ class SlotTaskCoordinator(
 
     private companion object {
         /** Idle time in a side pane before an app chosen for pausing is paused. */
-        const val PAUSE_IDLE_MS = 5_000L
+        const val PAUSE_IDLE_MS = 2_000L
+        /** A check that met an exchange or launch looks again this soon after. */
+        const val PAUSE_BUSY_RETRY_MS = 500L
+        const val STALE_FRAME_DELAY_MS = 400L
         const val SETTLE_DELAY_MS = 700L
         /** The rail's entry animation is 240 ms; retained tasks come back once it has settled. */
         const val REBIND_AFTER_ENTRY_MS = 320L
