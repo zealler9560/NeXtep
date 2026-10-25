@@ -5,19 +5,9 @@ import android.app.Instrumentation
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.xposed.HookGuard
 import io.github.libxposed.api.XposedModule
-import android.view.MotionEvent
-import android.view.ViewGroup
-import io.github.lujinxin.nextep.safety.FeatureGate
 
 object SystemUiHook {
     private data class StartupCandidate(val className: String, val methodName: String)
-
-    private val touchRootCandidates = listOf(
-        "com.android.systemui.statusbar.window.StatusBarWindowView",
-        "com.android.systemui.shade.NotificationShadeWindowView",
-        "com.android.systemui.statusbar.phone.StatusBarWindowView",
-        "com.android.systemui.statusbar.phone.PhoneStatusBarView",
-    )
 
     private val startupCandidates = listOf(
         StartupCandidate("com.android.systemui.SystemUIApplication", "onCreate"),
@@ -104,7 +94,6 @@ object SystemUiHook {
                             if (view != null && params != null) {
                                 HookGuard.run("system_dialog_layout_apply") {
                                     SystemDialogLayoutController.beforeLayout(view, params)
-                                    SystemUiShadeInputController.beforeLayout(view, params)
                                 }
                             }
                             return chain.proceed()
@@ -112,7 +101,6 @@ object SystemUiHook {
                     })
                 }
         }
-        SystemUiBrightnessMirrorHook.install(module, classLoader)
         HookGuard.run("systemui_framework_startup") {
             val method = Instrumentation::class.java.getDeclaredMethod(
                 "callApplicationOnCreate",
@@ -124,33 +112,6 @@ object SystemUiHook {
                 "systemui_framework_startup",
                 "Installed framework Application bootstrap fallback",
             )
-        }
-
-        if (FeatureGate.TOP_RIGHT_STATUS_BAR_GESTURE.defaultEnabled) {
-            HookGuard.run("systemui_root_touch") {
-                val method = ViewGroup::class.java.getDeclaredMethod(
-                    "dispatchTouchEvent",
-                    MotionEvent::class.java,
-                )
-                method.isAccessible = true
-                module.hook(method).intercept(SystemUiRootTouchHooker())
-                NeXtepLog.info("systemui_root_touch", "Installed public root touch observer")
-            }
-            touchRootCandidates.forEach { className ->
-                HookGuard.run("systemui_root_touch_override") {
-                    val rootClass = classLoader.loadClass(className)
-                    val method = rootClass.getDeclaredMethod(
-                        "dispatchTouchEvent",
-                        MotionEvent::class.java,
-                    )
-                    method.isAccessible = true
-                    module.hook(method).intercept(SystemUiRootTouchHooker())
-                    NeXtepLog.info(
-                        "systemui_root_touch_override",
-                        "Installed override observer on $className",
-                    )
-                }
-            }
         }
 
         var installed = false

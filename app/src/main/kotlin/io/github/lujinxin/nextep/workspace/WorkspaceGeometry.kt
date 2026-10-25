@@ -105,7 +105,7 @@ data class WorkspaceGeometry(
         get() = contentTop - availableTop * contentScale
 
     // The main app's own transform: width-fit on a shortened canvas, otherwise the common fit.
-    // Windows that cannot re-lay out (Launcher, SystemUI's shade) keep contentScale.
+    // Windows that cannot re-lay out (Launcher) keep contentScale.
     val mainScale: Float get() = if (mainCanvasHeight > 0) contentWidth.toFloat() / availableWidth else contentScale
     val mainTranslationX: Float get() = if (mainCanvasHeight > 0) contentLeft - availableLeft * mainScale else contentTranslationX
     val mainTranslationY: Float get() = if (mainCanvasHeight > 0) contentTop - availableTop * mainScale else contentTranslationY

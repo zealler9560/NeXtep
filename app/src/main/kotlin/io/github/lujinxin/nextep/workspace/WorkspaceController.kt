@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Looper
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.systemui.NeXtepWindowController
-import io.github.lujinxin.nextep.systemui.SystemUiRootTransformController
 import io.github.lujinxin.nextep.systemui.SystemDialogLayoutController
 import io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
@@ -38,7 +37,6 @@ class WorkspaceController(
         state = WorkspaceState.Suspended(current.geometry)
         windowController.suspendForLock()
         SystemServerWorkspaceBridge.publish(applicationContext, false)
-        SystemUiRootTransformController.setActive(false)
         SystemDialogLayoutController.setGeometry(null)
         mainTaskPresenter.restoreForeground().onFailure {
             NeXtepLog.warn("workspace", "Unable to restore main task during lock", it)
@@ -52,12 +50,8 @@ class WorkspaceController(
             // Reveal the retained windows independently of HOME/app task readiness.
             // The slot coordinator already retries foreground fitting after wake.
             val geometry = windowController.currentGeometry()
-            SystemUiRootTransformController.setGeometry(geometry)
             windowController.resumeAfterLock()
             SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
-            // NotificationShade also hosts the exiting keyguard. Unlock must
-            // leave that native window untouched; fit it on the next shade gesture.
-            SystemUiRootTransformController.setActive(true, fitExistingShade = false)
             SystemDialogLayoutController.setGeometry(geometry)
             state = WorkspaceState.Active(geometry)
             NeXtepLog.info("workspace", "Resumed after unlock; slot tasks retained")
@@ -66,7 +60,6 @@ class WorkspaceController(
             // Window failure must release the workspace gate so native HOME/SystemUI
             // can render, rather than hiding everything on every unlock retry.
             SystemServerWorkspaceBridge.publish(applicationContext, false)
-            SystemUiRootTransformController.setActive(false)
             SystemDialogLayoutController.setGeometry(null)
             mainTaskPresenter.restoreForeground().onFailure { rollbackError ->
                 NeXtepLog.warn("workspace", "Unable to restore main task after resume failure", rollbackError)
@@ -100,7 +93,6 @@ class WorkspaceController(
         val previous = activeState.geometry
         return try {
             val geometry = windowController.setSidebarSide(side).getOrThrow()
-            SystemUiRootTransformController.setGeometry(geometry)
             mainTaskPresenter.reconcileForeground(geometry).getOrThrow()
             SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
             TriggerBroadcastContract.systemUiSetIntent(applicationContext, true)?.let {
@@ -115,7 +107,6 @@ class WorkspaceController(
             true
         } catch (error: Throwable) {
             windowController.setSidebarSide(previous.sidebarSide)
-            SystemUiRootTransformController.setGeometry(previous)
             mainTaskPresenter.reconcileForeground(previous)
             SystemServerWorkspaceBridge.publish(applicationContext, true, previous)
             SystemDialogLayoutController.setGeometry(previous)
@@ -134,7 +125,6 @@ class WorkspaceController(
             // changing our physical viewport. Keep attached panels in place.
             if (windowController.currentGeometry(refreshViewport) == previous.geometry) return@runCatching true
             val geometry = windowController.reconfigure().getOrThrow()
-            SystemUiRootTransformController.setGeometry(geometry)
             mainTaskPresenter.reconcileForeground(geometry).onFailure {
                 // A momentarily unavailable foreground task must not hide every panel.
                 // SlotTaskCoordinator's foreground observer retries presentation.
@@ -162,9 +152,7 @@ class WorkspaceController(
         state = WorkspaceState.Entering
         return try {
             val requestedGeometry = windowController.currentGeometry(refreshViewport = true)
-            SystemUiRootTransformController.setGeometry(requestedGeometry)
             mainTaskPresenter.presentForeground(requestedGeometry).getOrThrow()
-            SystemUiRootTransformController.setActive(true)
             val geometry = windowController.show()
             SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
             applicationContext.sendBroadcast(
@@ -181,7 +169,6 @@ class WorkspaceController(
                 TriggerBroadcastContract.assistantScreenSetIntent(applicationContext, false),
             )
             windowController.hide()
-            SystemUiRootTransformController.setActive(false)
             mainTaskPresenter.restoreForeground()
             state = WorkspaceState.Faulted(error.message ?: error.javaClass.simpleName)
             NeXtepLog.error("workspace", "Enter failed open", error)
@@ -196,7 +183,6 @@ class WorkspaceController(
         return try {
             SystemServerWorkspaceBridge.publish(applicationContext, false)
             SystemDialogLayoutController.setGeometry(null)
-            SystemUiRootTransformController.setActive(false)
             // The main app grows back while the panels fade; both take 180ms.
             val restoreResult = mainTaskPresenter.restoreForeground(animated = true)
             windowController.hide()
@@ -212,8 +198,6 @@ class WorkspaceController(
             runCatching {
                 val geometry = windowController.resumeAfterLock()
                 mainTaskPresenter.presentForeground(geometry).getOrThrow()
-                SystemUiRootTransformController.setGeometry(geometry)
-                SystemUiRootTransformController.setActive(true)
                 SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
                 SystemDialogLayoutController.setGeometry(geometry)
                 state = WorkspaceState.Active(geometry)
