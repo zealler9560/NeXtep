@@ -48,14 +48,24 @@ class WorkspaceSwapAnimatorTest {
         val rect = RectF(0f, 0f, 240f, 480f)
         animator.animate(source, null, true, rect, rect, rect, 320, 640) { }
         val fresh = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888)
-        animator.refresh(1, fresh)
+        var done = false
+        animator.refresh(1, fresh) { done = true }
+        // The card dissolves from the old picture into the fresh one, then hands over.
+        val view = checkNotNull(preview(animator)) as SwapPreviewView
+        assertSame(fresh, view.frames[1].bitmap)
+        assertSame(source, view.fading?.second)
+        assertFalse(done)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(300))
+        assertTrue(done)
         assertTrue(source.isRecycled)
-        assertSame(fresh, (checkNotNull(preview(animator)) as SwapPreviewView).frames[1].bitmap)
-        // Without an overlay the picture has nowhere to go and is released.
+        assertNull(view.fading)
+        // Without an overlay the picture has nowhere to go: it is released and the hand-over still runs.
         animator.cancel()
         val late = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888)
-        animator.refresh(1, late)
+        var lateDone = false
+        animator.refresh(1, late) { lateDone = true }
         assertTrue(late.isRecycled)
+        assertTrue(lateDone)
     }
 
     @Test fun previewWaitsForCompletionInsteadOfAFixedDelay() {

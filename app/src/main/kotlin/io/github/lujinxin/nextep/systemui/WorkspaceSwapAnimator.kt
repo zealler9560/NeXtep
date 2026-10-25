@@ -78,16 +78,32 @@ internal class WorkspaceSwapAnimator(
     /** Identifies the running animation; [refresh] ignores pictures meant for an earlier one. */
     val current: Int get() = generation
 
-    /** Show [fresh] in frame [index] of animation [current] from now on, such as its app as the window it
-     * moved to shows it. */
-    fun refresh(index: Int, fresh: Bitmap?, current: Int = generation) {
-        fresh ?: return
+    /** Dissolve frame [index] of animation [current] into [fresh], such as its app as the window it moved to
+     * shows it (an app lays out again there), then run [then]. */
+    fun refresh(index: Int, fresh: Bitmap?, current: Int = generation, then: () -> Unit = {}) {
         val preview = overlay?.takeIf { current == generation }
         val frame = preview?.frames?.getOrNull(index)
-        if (preview == null || frame == null) return fresh.recycle()
-        frame.bitmap?.recycle()
+        if (fresh == null || preview == null || frame == null) {
+            fresh?.recycle()
+            return then()
+        }
+        preview.fading = frame.bitmap?.let { index to it }
+        preview.fadeAlpha = 1f
         preview.frames = preview.frames.toMutableList().also { it[index] = frame.copy(bitmap = fresh) }
-        preview.invalidate()
+        animator = ValueAnimator.ofFloat(1f, 0f).apply {
+            duration = DISSOLVE_MS
+            addUpdateListener {
+                preview.fadeAlpha = it.animatedValue as Float
+                preview.invalidate()
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    preview.endFade()
+                    if (current == generation) then()
+                }
+            })
+            start()
+        }
     }
 
     /** Hold one more still frame over the frozen ones, such as a card laid out after the freeze. */
@@ -225,6 +241,7 @@ internal class WorkspaceSwapAnimator(
     private companion object {
         /** A frozen overlay that never draws must not hold up the transition behind it. */
         const val SHOW_TIMEOUT_MS = 250L
+        const val DISSOLVE_MS = 150L
     }
 }
 
@@ -269,10 +286,33 @@ internal class SwapPreviewView(
             backdrop.draw(canvas)
             canvas.restoreToCount(save)
         }
-        frames.forEach { drawFrame(canvas, it) }
+        frames.forEachIndexed { index, frame -> drawFrame(canvas, frame, fading?.takeIf { it.first == index }?.second) }
     }
 
-    private fun drawFrame(canvas: Canvas, frame: WorkspaceSwapAnimator.Frame) {
+    /** The picture a frame dissolves from, drawn over its new one at [fadeAlpha]. */
+    var fading: Pair<Int, Bitmap>? = null
+    var fadeAlpha = 0f
+
+    fun endFade() {
+        fading?.second?.recycle()
+        fading = null
+        invalidate()
+    }
+
+    private fun drawFitted(canvas: Canvas, bitmap: Bitmap, topFill: Boolean, paint: Paint) {
+        val scale = if (topFill) destination.width() / bitmap.width
+            else minOf(destination.width() / bitmap.width, destination.height() / bitmap.height)
+        val imageWidth = bitmap.width * scale
+        val imageHeight = bitmap.height * scale
+        val top = if (topFill) destination.top else destination.centerY() - imageHeight / 2
+        sourceRect.set(0, 0, bitmap.width, bitmap.height)
+        canvas.drawBitmap(bitmap, sourceRect, RectF(destination.centerX() - imageWidth / 2, top,
+            destination.centerX() + imageWidth / 2, top + imageHeight), paint)
+    }
+
+    private val fadePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+    private fun drawFrame(canvas: Canvas, frame: WorkspaceSwapAnimator.Frame, fadeFrom: Bitmap?) {
         val (bitmap, from, to, empty) = frame
         fun interpolate(a: Float, b: Float) = a + (b - a) * progress
         destination.set(interpolate(from.left, to.left), interpolate(from.top, to.top),
@@ -293,15 +333,11 @@ internal class SwapPreviewView(
             badge.setBounds(left, top, left + badgeSize, top + badgeSize)
             badge.draw(canvas)
         } else if (bitmap != null) {
-            val scale = if (frame.topFill) destination.width() / bitmap.width
-                else minOf(destination.width() / bitmap.width, destination.height() / bitmap.height)
-            val imageWidth = bitmap.width * scale
-            val imageHeight = bitmap.height * scale
-            val top = if (frame.topFill) destination.top else destination.centerY() - imageHeight / 2
-            val fitted = RectF(destination.centerX() - imageWidth / 2, top,
-                destination.centerX() + imageWidth / 2, top + imageHeight)
-            sourceRect.set(0, 0, bitmap.width, bitmap.height)
-            canvas.drawBitmap(bitmap, sourceRect, fitted, bitmapPaint)
+            drawFitted(canvas, bitmap, frame.topFill, bitmapPaint)
+            if (fadeFrom != null && !fadeFrom.isRecycled) {
+                fadePaint.alpha = (fadeAlpha * 255).toInt()
+                drawFitted(canvas, fadeFrom, frame.topFill, fadePaint)
+            }
         }
         canvas.restoreToCount(save)
         canvas.drawRoundRect(destination, cornerRadius, cornerRadius, borderPaint)
@@ -311,5 +347,6 @@ internal class SwapPreviewView(
         if (released) return
         released = true
         frames.forEach { it.bitmap?.recycle() }
+        fading?.second?.recycle()
     }
 }
