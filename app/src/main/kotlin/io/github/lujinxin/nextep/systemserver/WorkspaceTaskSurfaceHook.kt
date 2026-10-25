@@ -100,9 +100,8 @@ internal object WorkspaceTaskSurfaceHook {
         if (call(task, "getDisplayId") != 0 || !promotedTasks.containsKey(task)) return
         val service = field(task, "mAtmService") ?: return
         val context = field(service, "mContext") as? Context ?: return
-        val active = SystemServerWorkspaceBridge.activeGeometry(context) ?: return
-        val geometry = (field(task, "mTaskId") as? Int)
-            ?.let { SystemServerWorkspaceBridge.mainGeometry(context, active, it) } ?: active
+        // An app hiding the status bar is shown whole by SystemUI's next reconciliation (it alone sees the bar).
+        val geometry = SystemServerWorkspaceBridge.activeGeometry(context) ?: return
         setMatrix.invoke(transaction, leash, geometry.mainScale, 0f, 0f, geometry.mainScale)
         transaction.setCrop(leash, Rect(geometry.availableLeft, geometry.availableTop,
             geometry.availableRight, geometry.availableBottom))

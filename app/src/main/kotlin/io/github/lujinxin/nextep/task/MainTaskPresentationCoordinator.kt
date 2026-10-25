@@ -8,7 +8,6 @@ import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.framework.WindowContainerTransactionCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
-import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
 
 class MainTaskPresentationCoordinator(context: Context) {
@@ -18,6 +17,12 @@ class MainTaskPresentationCoordinator(context: Context) {
     private var presentedTaskId: Int? = null
     private var activePresenter: MainTaskPresenter? = null
     var onHomePresented: (() -> Unit)? = null
+
+    /** Whether the status bar is hidden right now; only the main app can hide it in the workspace. */
+    var statusBarHidden: () -> Boolean = { false }
+
+    /** An app hiding the status bar draws content at its top, so it is shown whole instead of cropped. */
+    private fun mainGeometry(geometry: WorkspaceGeometry) = if (statusBarHidden()) geometry.uncropped() else geometry
     private var homePresented = false
 
     fun presentForeground(geometry: WorkspaceGeometry): Result<Unit> {
@@ -60,7 +65,7 @@ class MainTaskPresentationCoordinator(context: Context) {
             )
         }
 
-        val main = SystemServerWorkspaceBridge.mainGeometry(applicationContext, geometry, task.taskId)
+        val main = mainGeometry(geometry)
         pendingRestores -= task.taskId
         if (presentedTaskId == task.taskId && activePresenter === surfacePresenter) {
             return applyMainBounds(task, geometry).mapCatching { surfacePresenter.reapply(task.taskId, main).getOrThrow() }
@@ -120,8 +125,7 @@ class MainTaskPresentationCoordinator(context: Context) {
             release(tasks).getOrThrow()
         }
         if (presentedTaskId == foreground.taskId) {
-            activePresenter?.reapply(foreground.taskId,
-                SystemServerWorkspaceBridge.mainGeometry(applicationContext, geometry, foreground.taskId))
+            activePresenter?.reapply(foreground.taskId, mainGeometry(geometry))
                 ?.getOrThrow()
                 ?: error("Main presenter state is incomplete")
         } else {

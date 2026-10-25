@@ -383,6 +383,7 @@ class NeXtepWindowController(
                 if (!suspended && workspaceVisible) refreshWallpaperBackdrop()
             }
         }
+        mainTaskPresenter.statusBarHidden = ::statusBarHidden
     }
 
     fun suspendForLock() {
@@ -1102,10 +1103,15 @@ class NeXtepWindowController(
         return luma.max() - luma.min() < 24
     }
 
+    /** The status bar as it is now: a report from the app goes stale (a splash screen hid it, the page that
+     * followed showed it without reporting), so the strip's own insets decide. */
+    private fun statusBarHidden(): Boolean =
+        topAppStrip?.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.statusBars()) == false
+
     /** The main app cut to what its pane shows (the capture is of the whole screen). */
     private fun mainPanePreview(taskId: Int, base: WorkspaceGeometry): android.graphics.Bitmap? {
         val shot = io.github.lujinxin.nextep.framework.TaskSurfaceCompat.capturePreview(taskId) ?: return null
-        val g = SystemServerWorkspaceBridge.mainGeometry(context, base, taskId)
+        val g = if (statusBarHidden()) base.uncropped() else base
         val scale = shot.height / g.screenHeight.toFloat()
         val top = (g.availableTop * scale).toInt().coerceIn(0, shot.height - 1)
         val bottom = (g.availableBottom * scale).toInt().coerceIn(top + 1, shot.height)
