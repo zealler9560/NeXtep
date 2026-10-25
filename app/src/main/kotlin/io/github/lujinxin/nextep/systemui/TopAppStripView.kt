@@ -524,9 +524,10 @@ class TopAppStripView(
     private fun dp(value: Float): Int = (value * resources.displayMetrics.density).toInt()
 
     /**
-     * A larger display size leaves fewer dp across the screen (ColorOS 16 test phone: 363 dp), and the
-     * fixed row then looked sparse next to the reference phone. Narrower screens shrink the row with
-     * the screen width; wider ones keep it. The 44 dp icon box, and so the control height, stays.
+     * A larger display size leaves fewer dp across the screen (the standard size here: 347 dp), and
+     * fixed 60 dp tiles then left wide gaps. Narrower screens narrow the tiles with the screen width,
+     * so as many icons fit across as on the reference; the glyph keeps its 38 dp like the buttons
+     * beside it (shrinking it too made the icons smaller than the buttons).
      */
     private val rowScale: Float
         get() = with(resources.displayMetrics) {
@@ -548,7 +549,7 @@ class TopAppStripView(
         icon.draw(android.graphics.Canvas(bitmap))
         visibleGlyphBounds(bitmap)?.let { glyph ->
             // Draw again, scaled about the glyph's centre, rather than resample the first pass.
-            val scale = dp(APP_GLYPH_SIZE_DP * rowScale).toFloat() / maxOf(glyph.width(), glyph.height())
+            val scale = dp(APP_GLYPH_SIZE_DP).toFloat() / maxOf(glyph.width(), glyph.height())
             val left = box / 2f - glyph.exactCenterX() * scale
             val top = box / 2f - glyph.exactCenterY() * scale
             bitmap.eraseColor(Color.TRANSPARENT)
