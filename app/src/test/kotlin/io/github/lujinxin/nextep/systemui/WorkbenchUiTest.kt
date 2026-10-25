@@ -67,9 +67,9 @@ class WorkbenchUiTest {
         val above = rowBounds.top - (40 * density).toInt()
         val below = height - appsBounds.bottom
         assertTrue("above=$above below=$below", below >= (6 * density).toInt() && kotlin.math.abs(above - below) <= (4 * density).toInt())
-        // Adjacent 48dp touch targets, each drawing its 36dp card 6dp inside: two default scenes and the add button.
+        // Adjacent 52dp touch targets, each drawing its 40dp card 6dp inside: two default scenes and the add button.
         assertEquals(3, bar.childCount)
-        assertEquals((48 * density).toInt(), payment.width)
+        assertEquals((52 * density).toInt(), payment.width)
         assertEquals(0, payment.left - bar.getChildAt(0).right)
         assertEquals(0, bar.getChildAt(2).left - payment.right)
         val cardInset = Rect()
@@ -107,7 +107,7 @@ class WorkbenchUiTest {
                 // The scene the workspace shows (the third button) is tinted; the rest share the empty slot's card tone.
                 if (index == 2) assertNotEquals(theme.slotCard, fill) else assertEquals(theme.slotCard, fill)
                 // The glyph keeps 20dp inside the 36dp card: the inset background must not replace the padding.
-                val padding = (14 * context.resources.displayMetrics.density).toInt()
+                val padding = (15 * context.resources.displayMetrics.density).toInt()
                 assertEquals("button $index", listOf(padding, padding, padding, padding),
                     listOf(button.paddingLeft, button.paddingTop, button.paddingRight, button.paddingBottom))
             }

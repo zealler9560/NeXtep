@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat" alt="Apache-2.0">
 </p>
 
-Panes is an LSPosed module that adds a side workspace to the stock ColorOS 17 launcher: one main window to work in, five live panes waiting beside it, and the things you use most within reach. It does not replace the launcher or restyle the system; leave the workspace and the phone is as it was.
+Panes is an LSPosed module that adds a side workspace to the stock ColorOS 17 launcher: one main window to work in, four live panes waiting beside it, and the things you use most within reach. It does not replace the launcher or restyle the system; leave the workspace and the phone is as it was.
 
 <p align="center">
   <img src="assets/readme/overview.gif" alt="A diagonal swipe from a bottom corner opens the workspace, another one closes it" width="300">
@@ -25,9 +25,9 @@ Panes is an LSPosed module that adds a side workspace to the stock ColorOS 17 la
 
 ## Features
 
-### One main pane, five small panes
+### One main pane, four small panes
 
-The main pane is the app you are using. The five small panes beside it are five real running apps, each on its own virtual display, not snapshots. Tap a small pane and it swaps places with the main pane, scaled evenly with nothing stretched; long-press and drag to reorder the panes or send an app to the background. The main pane keeps only a thin strip of each app's blank status-bar band as a gap and gives the rest to the top bar; with gesture navigation the panes stop short of the bottom edge to leave room for the gesture. Apps that hide the status bar are shown whole.
+The main pane is the app you are using. The four small panes beside it are four real running apps, each on its own virtual display, not snapshots. Tap a small pane and it swaps places with the main pane, scaled evenly with nothing stretched; long-press and drag to reorder the panes or send an app to the background. The main pane keeps only a thin strip of each app's blank status-bar band as a gap and gives the rest to the top bar; with gesture navigation the panes stop short of the bottom edge to leave room for the gesture. Apps that hide the status bar are shown whole.
 
 <p align="center">
   <img src="assets/readme/swap.gif" alt="Tapping a small pane swaps it with the main pane, and back" width="300">
@@ -41,7 +41,7 @@ The small panes' displays refresh at 30 frames per second, which looks the same 
 
 A row of favourite apps sits at the top: the ones you pin in Settings come first (pin as many as you like), and your most-used apps of the last seven days fill the row up to ten. Tap an icon to open it in the main pane, or long-press and drag it onto a small pane to open it there. The "+" on an empty pane adds an app too: the current main app moves into that pane, and the next app you pick from the Home screen opens in the main pane.
 
-However an app opens (the top bar, a notification, the control centre, the status bar, a link in another app), it takes the main pane and the previous main app moves into an empty small pane; with all five full it goes to the background. Turn this off with "Minimize the previous app when another opens" in Settings.
+However an app opens (the top bar, a notification, the control centre, the status bar, a link in another app), it takes the main pane and the previous main app moves into an empty small pane; with all four full it goes to the background. Turn this off with "Minimize the previous app when another opens" in Settings.
 
 <p align="center">
   <img src="assets/readme/favorites.gif" alt="Tapping a favourite opens it in the main pane; dragging one opens it in a small pane" width="300">
@@ -49,7 +49,7 @@ However an app opens (the top bar, a notification, the control centre, the statu
 
 ### Landscape video moves up
 
-When the main app asks for landscape, for example when you tap fullscreen in a player, the video moves into a wide pane at the top: full width at 16:9, narrowed to the picture (down to 2.4:1) when it has letterbox bars. The main pane and the other four small panes stay usable, and the wide pane takes taps for pause and seeking; leave fullscreen and the video returns to the main pane.
+When the main app asks for landscape, for example when you tap fullscreen in a player, the video moves into a wide pane at the top: full width at 16:9, narrowed to the picture (down to 2.4:1) when it has letterbox bars. The main pane and the other three small panes stay usable, and the wide pane takes taps for pause and seeking; leave fullscreen and the video returns to the main pane.
 
 <p align="center">
   <img src="assets/readme/video.gif" alt="A fullscreen video moves into the wide pane at the top and back" width="300">

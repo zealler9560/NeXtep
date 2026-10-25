@@ -52,10 +52,11 @@ data class WorkspaceLayoutProfile(
 
     /** The candidate crop for pane [index]: none under a wide picture, where cards take their own aspect. */
     fun slotCrop(index: Int): Int = if (wideSlotIndex == null) slotCrop else 0
-    // Under a wide picture the rail cards fill the rail edge to edge; their displays take the
-    // card's own aspect (see canvas) instead of leaving slack beside the main window.
+    // Under a wide picture in portrait the rail cards take the main app's canvas (see canvas): the
+    // shared solve fills the rail edge to edge, and a capped canvas leaves a little slack instead;
+    // in landscape they fill the rail at their own aspect.
     val slots: List<Slot> = if (wideSlotIndex == null) slotBounds(WORKSPACE_SLOT_COUNT) else {
-        val rail = slotBounds(WORKSPACE_SLOT_COUNT - 1, fit = false).iterator()
+        val rail = slotBounds(WORKSPACE_SLOT_COUNT - 1, fit = geometry.mainCanvasHeight > 0).iterator()
         List(WORKSPACE_SLOT_COUNT) { index ->
             if (index == wideSlotIndex) Slot(minOf(geometry.availableWidth, geometry.availableHeight),
                 wideHeight(), 0) else rail.next()
@@ -71,7 +72,9 @@ data class WorkspaceLayoutProfile(
     fun canvas(index: Int): SlotGeometry = when {
         index == wideSlotIndex -> SlotGeometry(canvas.width, (canvas.width.toDouble() * wideHeight() /
             minOf(geometry.availableWidth, geometry.availableHeight)).toInt().coerceAtLeast(1), densityDpi)
-        // A rail card under a wide picture: the app lays out at the card's aspect, full canvas width.
+        // A rail card under a wide picture: the main app's canvas in portrait, so a swap keeps the
+        // layout; in landscape the card's own aspect, full canvas width.
+        wideSlotIndex != null && geometry.mainCanvasHeight > 0 -> SlotGeometry(canvas.width, geometry.mainCanvasHeight, densityDpi)
         wideSlotIndex != null -> slots[index].let { slot ->
             SlotGeometry(canvas.width, (canvas.width.toDouble() * slot.height / slot.width).toInt().coerceAtLeast(1), densityDpi)
         }
@@ -129,8 +132,9 @@ data class WorkspaceLayoutProfile(
             val cellWidth = geometry.sidebarWidth - gapPixels
             val top = index * (base + slotGapPixels) + minOf(index, remainder)
             if (!fit) Slot(cellWidth, cellHeight, top) else {
-                // Cards take the aspect of what they show: the display below its crop.
-                val visible = canvas.height - slotCrop
+                // Cards take the aspect of what they show: the display below its crop, or under a wide
+                // picture the main app's canvas.
+                val visible = if (geometry.mainCanvasHeight > 0) geometry.mainCanvasHeight else canvas.height - slotCrop
                 val scale = minOf(cellWidth.toDouble() / canvas.width, cellHeight.toDouble() / visible)
                 val height = (visible * scale).toInt().coerceAtLeast(1)
                 Slot((canvas.width * scale).toInt().coerceAtLeast(1), height, top + (cellHeight - height) / 2)
@@ -163,9 +167,10 @@ data class WorkspaceLayoutProfile(
         geometry.displayRotation) + if (wideSlotIndex == null) emptyList() else listOf(wideSlotIndex)).joinToString(",")
 
     companion object {
-        /** The main canvas height that fills the main window at the width-fit scale. */
+        /** The main canvas height that fills the main window at the width-fit scale, at most the screen's:
+         * a taller canvas cannot be laid out on the display, and the pane displays must match it. */
         internal fun wideMainCanvasHeight(g: WorkspaceGeometry): Int =
-            (g.contentHeight.toDouble() * g.availableWidth / g.contentWidth).toInt().coerceAtLeast(1)
+            (g.contentHeight.toDouble() * g.availableWidth / g.contentWidth).toInt().coerceIn(1, g.availableHeight)
 
         const val DEFAULT_WIDE_ASPECT = 16.0 / 9
         const val MIN_WIDE_ASPECT = 16.0 / 9
@@ -186,24 +191,25 @@ data class WorkspaceLayoutProfile(
             if (!wide && p.firstOrNull() != NORMAL_VERSION ||
                 p.size != 21 + WORKSPACE_SLOT_COUNT * 3 + if (wide) 1 else 0) return@runCatching null
             val portrait = p[2].toInt() > p[1].toInt()
-            val profile = WorkspaceLayoutProfile(WorkspaceGeometry(p[1].toInt(), p[2].toInt(),
+            val geometry = WorkspaceGeometry(p[1].toInt(), p[2].toInt(),
                 p[3].toInt(), p[4].toInt(), SidebarSide.RIGHT,
                 WorkspaceNavigationInsets(p[7].toInt(), p[8].toInt(), p[9].toInt(), p[10].toInt()),
                 displayRotation = p[20 + WORKSPACE_SLOT_COUNT * 3].toInt(),
                 // The band a portrait record was solved below; a wide record keeps it in its strip.
                 statusInset = if (portrait && !wide) statusBar else 0,
                 bottomGap = WorkspaceGeometry.gestureGap(portrait, false,
-                    if (wide) 0 else statusBar, p[10].toInt(), p[5].toInt() / 160f, gestureBar)),
+                    if (wide) 0 else statusBar, p[10].toInt(), p[5].toInt() / 160f, gestureBar))
+            // The main canvas is not recorded: it follows from the rail, and the cards are solved on it.
+            val profile = WorkspaceLayoutProfile(if (wide && portrait) geometry.copy(mainCanvasHeight = wideMainCanvasHeight(geometry)) else geometry,
                 p[5].toInt(), p[6].toInt(), if (wide) p.last().toInt() else null, statusBar = statusBar,
                 gestureBar = gestureBar)
             if (profile.encode() != encoded) return@runCatching null
-            if (!wide) profile else profile.copy(geometry = profile.geometry.copy(mainCanvasHeight =
-                if (profile.geometry.isLandscape) 0 else wideMainCanvasHeight(profile.geometry)))
+            profile
         }.getOrNull()
 
         // The version names the slot count: a record of another layout (any older one) is measured again.
-        private const val NORMAL_VERSION = "14"
-        private const val WIDE_VERSION = "15"
+        private const val NORMAL_VERSION = "16"
+        private const val WIDE_VERSION = "17"
 
     }
 }

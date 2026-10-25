@@ -81,6 +81,13 @@ class NeXtepWindowController(
         val geometry = geometry()
         applyWindowGeometry(geometry)
         sidebarView?.let { applySlotLayout(it, geometry) }
+        // The shared canvas follows the picture's height; the main task is laid out at it again, as the
+        // pane displays are, so a swap under the picture keeps the app's layout.
+        mainTaskPresenter.currentTaskId()?.let { taskId ->
+            mainTaskPresenter.presentTask(taskId, geometry).onFailure {
+                NeXtepLog.warn("wide_layout", "Main task not laid out at the new canvas taskId=$taskId", it)
+            }
+        }
     }
     private var pinPending = false
     /** Bumped by each wide pin or return; a newer one stops the older one's frame polling. */

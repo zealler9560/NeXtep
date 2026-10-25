@@ -55,7 +55,7 @@
     <string name="favorite_apps_summary">%1$d개 선택됨</string>
     <string name="workbench_compare_hint">같은 상품을 여러 앱에서 동시에 검색하고 각각 작은 창으로 엽니다.</string>
     <string name="section_scenes">장면</string>
-    <string name="scenes_summary">메인 창과 작은 창 다섯 개를 한 세트로 저장하고 한 번에 복원합니다.</string>
+    <string name="scenes_summary">메인 창과 작은 창 네 개를 한 세트로 저장하고 한 번에 복원합니다.</string>
     <string name="scene_save_action">현재 저장</string>
     <string name="scene_name_hint">장면 이름</string>
     <string name="scene_apply_action">복원</string>

@@ -33,10 +33,12 @@ class WorkspaceLayoutProfileTest {
                             assertEquals(16.0 / 9, wide.width.toDouble() / wide.height, 0.02)
                             profile.slots.forEachIndexed { i, slot ->
                                 if (i == wideIndex) return@forEachIndexed
-                                assertEquals(g.sidebarWidth - profile.gapPixels, slot.width)
+                                // Edge to edge up to the rounding of a card solved on the shared canvas.
+                                assertEquals((g.sidebarWidth - profile.gapPixels).toFloat(), slot.width.toFloat(), 3f)
                                 assertTrue(slot.height > 0)
                                 val railCanvas = profile.canvas(i)
                                 assertEquals(slot.width.toDouble() / slot.height, railCanvas.width.toDouble() / railCanvas.height, 0.01)
+                                if (sharedAspect) assertEquals(g.mainCanvasHeight, railCanvas.height)
                             }
                             val railHeight = profile.slots.filterIndexed { i, _ -> i != wideIndex }.sumOf { it.height } +
                                 profile.slotGapPixels * (profile.slots.size - 2)
@@ -60,6 +62,10 @@ class WorkspaceLayoutProfileTest {
                             assertEquals(0, normal.geometry.mainCanvasHeight)
                             val narrower = normal.withWideSlot(wideIndex, 2.4)
                             assertTrue(narrower.geometry.topHeight < g.topHeight)
+                            // A wide picture leaves a canvas taller than the screen; it is capped so the main
+                            // task can be laid out at it and the pane displays match.
+                            assertTrue(narrower.geometry.mainCanvasHeight <= narrower.geometry.availableHeight)
+                            if (sharedAspect) assertEquals(narrower.geometry.mainCanvasHeight, narrower.canvas((wideIndex + 1) % 4).height)
                             assertEquals(2.4, narrower.canvas(wideIndex).let { it.width.toDouble() / it.height }, 0.02)
                             assertEquals(narrower, narrower.withControlAtBottom(true).withControlAtBottom(false))
                         }
@@ -213,11 +219,11 @@ class WorkspaceLayoutProfileTest {
                 val normal = WorkspaceLayoutProfile.create(width, height, 480, WorkspaceNavigationInsets(), rotation)
                 for (index in 0 until io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT) {
                     val wide = normal.withWideSlot(index)
-                    assertEquals(5, wide.slots.size)
+                    assertEquals(4, wide.slots.size)
                     assertTrue(wide.canvas(index).width > wide.canvas(index).height)
                     assertEquals(wide, WorkspaceLayoutProfile.decode(wide.encode()))
                     val rail = wide.slots.filterIndexed { i, _ -> i != index }
-                    assertEquals(4, rail.size)
+                    assertEquals(3, rail.size)
                     assertTrue(rail.last().top + rail.last().height <= wide.geometry.sidebarLogicalHeight)
                     for (slot in rail) assertTrue(slot.width > 0 && slot.height > 0)
                     val g = wide.geometry
@@ -229,11 +235,11 @@ class WorkspaceLayoutProfileTest {
         }
     }
 
-    @Test fun fiveCardsFillTheRailBesideTheMainWindow() {
+    @Test fun fourCardsFillTheRailBesideTheMainWindow() {
         val profile = WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets())
-        assertEquals(5, profile.slots.size)
+        assertEquals(4, profile.slots.size)
         val g = profile.geometry
-        // The five cards and their gaps are as tall as the main window, top and bottom aligned.
+        // The four cards and their gaps are as tall as the main window, top and bottom aligned.
         assertEquals(g.sidebarLogicalHeight.toFloat(), profile.slots.last().let { it.top + it.height }.toFloat(), 6f)
         assertTrue(profile.slots.first().top <= 3)
         profile.slots.forEachIndexed { i, slot ->

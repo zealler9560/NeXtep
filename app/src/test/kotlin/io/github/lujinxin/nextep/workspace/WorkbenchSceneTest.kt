@@ -10,11 +10,11 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class WorkbenchSceneTest {
-    private val none = List(5) { null as String? }
+    private val none = List(4) { null as String? }
 
     @Test fun scenesRoundTripReplaceInPlaceAndStopAtSix() {
-        val work = WorkbenchScene("工作", "com.a.mail", listOf("com.a.chat", null, "com.a.notes", null, null), icon = "work")
-        val play = WorkbenchScene("追剧", null, listOf(null, "com.b.video", null, null, null))
+        val work = WorkbenchScene("工作", "com.a.mail", listOf("com.a.chat", null, "com.a.notes", null), icon = "work")
+        val play = WorkbenchScene("追剧", null, listOf(null, "com.b.video", null, null))
         val tools = WorkbenchScene.builtins()
         val all = tools + work + play
         assertEquals(all, WorkbenchScene.decode(WorkbenchScene.encode(all)))
@@ -51,11 +51,11 @@ class WorkbenchSceneTest {
     }
 
     @Test fun activeSceneIsTheMostSpecificLayoutWhoseAppsAreAllInPlace() {
-        val reading = WorkbenchScene("读", "com.read", List(5) { null })
+        val reading = WorkbenchScene("读", "com.read", List(4) { null })
         val reader = WorkbenchScene("读写", "com.read", listOf("com.notes", null, null, null))
         val scenes = WorkbenchScene.builtins() + reading + reader
         assertEquals(reader, WorkbenchScene.active(scenes, "com.read", listOf("com.notes", "com.x", null, null)))
         assertEquals(reading, WorkbenchScene.active(scenes, "com.read", listOf("com.other", null, null, null)))
-        assertNull(WorkbenchScene.active(scenes, null, List(5) { null }))
+        assertNull(WorkbenchScene.active(scenes, null, List(4) { null }))
     }
 }

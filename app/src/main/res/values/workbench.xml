@@ -56,7 +56,7 @@
     <string name="favorite_apps_summary">Selected %1$d apps</string>
     <string name="workbench_compare_hint">Search one product in several apps at once, each in its own pane.</string>
     <string name="section_scenes">Scenes</string>
-    <string name="scenes_summary">Save the main pane and the five small panes as a set and bring it back in one tap.</string>
+    <string name="scenes_summary">Save the main pane and the four small panes as a set and bring it back in one tap.</string>
     <string name="scene_save_action">Save current</string>
     <string name="scene_name_hint">Scene name</string>
     <string name="scene_apply_action">Restore</string>
