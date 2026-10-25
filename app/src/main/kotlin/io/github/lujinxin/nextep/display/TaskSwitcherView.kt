@@ -245,6 +245,7 @@ class TaskSwitcherView(
     fun showWaiting() {
         backgroundSwipe.cancel()
         waiting = true
+        setOutputLayerShown(true)
         textureView.animate().cancel()
         textureView.animate()
             .alpha(0f)
@@ -416,11 +417,13 @@ class TaskSwitcherView(
                 .scaleY(CONTENT_EXIT_SCALE)
                 .setDuration(TRANSITION_OUT_DURATION_MS)
                 .setInterpolator(transitionInterpolator)
+                .withEndAction(::hideOutputIfEmpty)
                 .start()
         } else {
             textureView.alpha = 0f
             textureView.scaleX = 1f
             textureView.scaleY = 1f
+            hideOutputIfEmpty()
         }
         badgeHighlighted = highlighted
         statusView.background = appearance.emptyBadge(resources.displayMetrics.density, highlighted)
@@ -432,6 +435,7 @@ class TaskSwitcherView(
     private fun showOccupied(animated: Boolean) {
         statusView.animate().cancel()
         setStatusVisible(false)
+        setOutputLayerShown(true)
 
         textureView.animate().cancel()
         // A coordinated exchange already animates a protected preview. The live
@@ -452,6 +456,20 @@ class TaskSwitcherView(
             textureView.scaleX = 1f
             textureView.scaleY = 1f
         }
+    }
+
+    /**
+     * ColorOS 16 keeps compositing an emptied pane's last frame whatever the view's alpha, and it
+     * shows faintly through the translucent empty card; the layer itself is hidden while empty.
+     */
+    fun hideOutputIfEmpty() {
+        if (currentState is SlotState.Ready || currentState is SlotState.Empty) setOutputLayerShown(false)
+    }
+
+    private fun setOutputLayerShown(shown: Boolean) {
+        val layer = textureView.surfaceControl?.takeIf { it.isValid } ?: return
+        runCatching { android.view.SurfaceControl.Transaction().setVisibility(layer, shown).apply() }
+            .onFailure { NeXtepLog.warn("slot_output", "Output layer visibility unavailable slot=$slotIndex", it) }
     }
 
     private fun setStatusVisible(visible: Boolean) {

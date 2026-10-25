@@ -19,8 +19,6 @@ class VirtualDisplaySlot(
         /** Two frames for a reconnected output to show the app. */
         const val OUTPUT_REBIND_SETTLE_MS = 40L
         const val PARKED_DISPLAY_RELEASE_MS = 60_000L
-        /** Enough frames for a reconnected empty display to have replaced the old picture, if it will. */
-        const val STALE_FRAME_CHECK_MS = 300L
         const val STALE_FRAME_SPREAD = 24
         val creator: java.util.concurrent.ExecutorService =
             java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "NeXtep-VirtualDisplay") }
@@ -195,12 +193,9 @@ class VirtualDisplaySlot(
                 NeXtepLog.info("slot_output", "Emptied slot=$index before=$before alpha=${view.textureView.alpha}")
                 return@probeOutput
             }
-            rebindOutput()
-            mainHandler.postDelayed({
-                probeOutput { after ->
-                    NeXtepLog.info("slot_output", "Emptied slot=$index before=$before after=$after alpha=${view.textureView.alpha}")
-                }
-            }, STALE_FRAME_CHECK_MS)
+            // Reconnecting the output kept the frame on ColorOS 16 (an empty display draws nothing new).
+            view.hideOutputIfEmpty()
+            NeXtepLog.info("slot_output", "Emptied slot=$index before=$before hid layer alpha=${view.textureView.alpha}")
         }
     }
 

@@ -61,6 +61,7 @@ class MainTaskPresentationCoordinator(context: Context) {
         }
 
         val main = SystemServerWorkspaceBridge.mainGeometry(applicationContext, geometry, task.taskId)
+        pendingRestores -= task.taskId
         if (presentedTaskId == task.taskId && activePresenter === surfacePresenter) {
             return applyMainBounds(task, geometry).mapCatching { surfacePresenter.reapply(task.taskId, main).getOrThrow() }
         }
@@ -92,11 +93,12 @@ class MainTaskPresentationCoordinator(context: Context) {
         geometry: WorkspaceGeometry,
         tasks: List<TaskRepository.TaskSnapshot>,
     ): Result<Unit> = runCatching {
+        restorePending(tasks)
         val foreground = tasks.firstOrNull { it.displayId == Display.DEFAULT_DISPLAY }
             ?: error("No foreground Display 0 task")
         val homePackage = TriggerBroadcastContract.resolveHomePackage(applicationContext)
         if (foreground.component.packageName == homePackage) {
-            restoreForeground().getOrThrow()
+            release(tasks).getOrThrow()
             notifyHomePresented()
             return@runCatching
         }
@@ -108,14 +110,14 @@ class MainTaskPresentationCoordinator(context: Context) {
             // If the presented task itself became freeform, release our ownership.
             presentedTaskId?.let { taskId ->
                 if (tasks.firstOrNull { it.taskId == taskId }?.let(::isMainFullscreen) != true) {
-                    restoreForeground().getOrThrow()
+                    restorePresented().getOrThrow()
                 }
             }
             return@runCatching
         }
         val current = presentedTaskId
         if (current != null && current != foreground.taskId) {
-            restoreForeground().getOrThrow()
+            release(tasks).getOrThrow()
         }
         if (presentedTaskId == foreground.taskId) {
             activePresenter?.reapply(foreground.taskId,
@@ -129,13 +131,52 @@ class MainTaskPresentationCoordinator(context: Context) {
 
     /** The move that follows sets the task's bounds itself; clearing them first would lay the app out twice. */
     fun restoreForMove(taskId: Int): Result<Unit> {
+        if (pendingRestores.remove(taskId)) return surfacePresenter.restore(taskId)
         if (presentedTaskId != taskId) return Result.success(Unit)
-        return restoreForeground(clearBounds = false)
+        return restorePresented(clearBounds = false)
     }
 
     fun currentTaskId(): Int? = presentedTaskId
 
-    fun restoreForeground(animated: Boolean = false, clearBounds: Boolean = true): Result<Unit> {
+    /** Leaving the workspace: every task this coordinator transformed goes back to full screen. */
+    fun restoreForeground(animated: Boolean = false): Result<Unit> {
+        pendingRestores.toList().forEach { taskId ->
+            surfacePresenter.restore(taskId).onFailure {
+                NeXtepLog.warn("main_task_presenter", "Deferred release failed taskId=$taskId", it)
+            }
+        }
+        pendingRestores.clear()
+        return restorePresented(animated)
+    }
+
+    /**
+     * Tasks given up while still on screen. Going home or a quick switch hands them to the launcher's
+     * animation; putting them back to full screen then showed the app at full size, cut by that
+     * animation (seen on ColorOS 16). They go back once off screen.
+     */
+    private val pendingRestores = mutableSetOf<Int>()
+
+    private fun release(tasks: List<TaskRepository.TaskSnapshot>): Result<Unit> {
+        val taskId = presentedTaskId ?: return Result.success(Unit)
+        if (shortenedTaskId == taskId || tasks.none { it.taskId == taskId && it.visible }) return restorePresented()
+        pendingRestores += taskId
+        presentedTaskId = null
+        activePresenter = null
+        NeXtepLog.info("main_task_presenter", "Release of taskId=$taskId waits until it leaves the screen")
+        return Result.success(Unit)
+    }
+
+    private fun restorePending(tasks: List<TaskRepository.TaskSnapshot>) {
+        pendingRestores.removeAll { taskId ->
+            if (tasks.any { it.taskId == taskId && it.visible }) return@removeAll false
+            surfacePresenter.restore(taskId)
+                .onSuccess { NeXtepLog.info("main_task_presenter", "Released taskId=$taskId off screen") }
+                .onFailure { NeXtepLog.warn("main_task_presenter", "Deferred release failed taskId=$taskId", it) }
+            true
+        }
+    }
+
+    private fun restorePresented(animated: Boolean = false, clearBounds: Boolean = true): Result<Unit> {
         val taskId = presentedTaskId ?: return Result.success(Unit)
         val presenter = activePresenter ?: return Result.success(Unit)
         return presenter.restore(taskId, animated).mapCatching {
