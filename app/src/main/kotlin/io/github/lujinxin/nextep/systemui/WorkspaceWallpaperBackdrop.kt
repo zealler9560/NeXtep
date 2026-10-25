@@ -36,24 +36,28 @@ object WorkspaceWallpaperBackdrop {
         // WallpaperManager.drawable can then contain the previous static wallpaper.
         // Capture only the wallpaper surface, never the screen's apps or overlays.
         captureRenderedWallpaper()?.let { snapshot ->
-            try {
+            val fitted = try {
                 val software = if (snapshot.config == Bitmap.Config.HARDWARE) {
                     snapshot.copy(Bitmap.Config.ARGB_8888, false) ?: return@runCatching null
                 } else snapshot
                 try {
-                    return@runCatching fit(software, width, height)
+                    fit(software, width, height)
                 } finally {
                     if (software !== snapshot) software.recycle()
                 }
             } finally {
                 snapshot.recycle()
             }
+            visibleOrNull(fitted, "surface")?.let { return@runCatching it }
         }
         val manager = WallpaperManager.getInstance(context)
         // A live service may need a few frames after FLAG_SHOW_WALLPAPER is set.
         // Retain the last rendered frame while the controller retries, rather than
         // displaying WallpaperManager's unrelated previous static image.
-        if (manager.wallpaperInfo != null) return@runCatching null
+        if (manager.wallpaperInfo != null) {
+            NeXtepLog.info("wallpaper_backdrop", "No surface frame; live wallpaper ${manager.wallpaperInfo?.component}")
+            return@runCatching null
+        }
         manager.forgetLoadedWallpaper()
         val wallpaper = manager.drawable?.constantState?.newDrawable(context.resources)?.mutate()
             ?: return@runCatching null
@@ -72,10 +76,35 @@ object WorkspaceWallpaperBackdrop {
         val top = (sampleHeight - drawHeight) / 2
         wallpaper.setBounds(left, top, left + drawWidth, top + drawHeight)
         wallpaper.draw(Canvas(sampled))
-        sampled
+        visibleOrNull(sampled, "static")
     }.onFailure { error ->
         NeXtepLog.warn("wallpaper_backdrop", "Unable to capture desktop wallpaper", error)
     }.getOrNull()
+
+    /**
+     * Some ROMs (a realme GT8 report) hand back a hidden or protected wallpaper surface as solid
+     * black; blurred under the translucent panels it turned the whole workspace black. Such a
+     * frame is dropped, so the panels keep their opaque fallback tone and the capture retries.
+     */
+    private fun visibleOrNull(bitmap: Bitmap?, source: String): Bitmap? {
+        if (bitmap == null) return null
+        if (!isBlank(bitmap)) {
+            NeXtepLog.info("wallpaper_backdrop", "Captured source=$source ${bitmap.width}x${bitmap.height}")
+            return bitmap
+        }
+        NeXtepLog.warn("wallpaper_backdrop", "Dropped a blank $source frame ${bitmap.width}x${bitmap.height}")
+        bitmap.recycle()
+        return null
+    }
+
+    /** True when a 9x9 grid of samples is all (near) black: no picture, not a dark wallpaper. */
+    internal fun isBlank(bitmap: Bitmap): Boolean = (0 until 9).all { row ->
+        (0 until 9).all { column ->
+            val pixel = bitmap.getPixel(((column + 0.5f) * bitmap.width / 9).toInt().coerceIn(0, bitmap.width - 1),
+                ((row + 0.5f) * bitmap.height / 9).toInt().coerceIn(0, bitmap.height - 1))
+            maxOf(Color.red(pixel), Color.green(pixel), Color.blue(pixel)) <= 8
+        }
+    }
 
     fun fit(source: Bitmap, width: Int, height: Int): Bitmap? = runCatching {
         val fitted = Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
