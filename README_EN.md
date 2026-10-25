@@ -27,7 +27,7 @@ Panes is an LSPosed module that adds a side workspace to the stock ColorOS 17 la
 
 ### One main pane, four small panes
 
-The main pane is the app you are using. The four small panes beside it are four real running apps, each on its own virtual display, not snapshots. Tap a small pane and it swaps places with the main pane, scaled evenly with nothing stretched or cropped; long-press and drag to reorder the panes or send an app to the background.
+The main pane is the app you are using. The four small panes beside it are four real running apps, each on its own virtual display, not snapshots. Tap a small pane and it swaps places with the main pane, scaled evenly with nothing stretched; long-press and drag to reorder the panes or send an app to the background. The main pane leaves out the blank status-bar band at the top of each app and gives that space to the top bar; apps that hide the status bar are shown whole.
 
 <p align="center">
   <img src="assets/readme/swap.gif" alt="Tapping a small pane swaps it with the main pane, and back" width="300">

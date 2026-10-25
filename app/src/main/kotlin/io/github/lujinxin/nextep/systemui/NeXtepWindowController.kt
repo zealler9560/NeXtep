@@ -814,7 +814,8 @@ class NeXtepWindowController(
             windowManager.updateViewLayout(record.view, params)
         }
         refreshMainFrame(geometry)
-        topAppStrip?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft, geometry.controlAtBottom)
+        topAppStrip?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft, geometry.controlAtBottom,
+            geometry.controlStatusBand)
     }
 
     private fun configureWindow(
@@ -847,9 +848,10 @@ class NeXtepWindowController(
         when (record.title) {
             "NeXtepTopBar" -> {
                 params.width = geometry.controlWidth
-                params.height = geometry.controlHeight
+                // The status band above the strip belongs to the strip's window, not to any pane.
+                params.height = geometry.controlHeight + geometry.controlStatusBand
                 params.x = geometry.controlLeft
-                params.y = geometry.controlTop
+                params.y = geometry.controlTop - geometry.controlStatusBand
             }
             "NeXtepSidebar" -> {
                 params.width = geometry.sidebarPhysicalWidth
@@ -1172,7 +1174,8 @@ class NeXtepWindowController(
     private fun applyWallpaperBackdrop(geometry: WorkspaceGeometry) {
         records.firstOrNull { it.title == "NeXtepTopBar" }?.view?.let { view ->
             val background = WorkspaceWallpaperBackdrop.crop(wallpaperBitmap,
-                geometry.controlLeft, geometry.controlTop, frostStrength, view.background, appearance.opaquePanel)
+                geometry.controlLeft, geometry.controlTop - geometry.controlStatusBand, frostStrength, view.background,
+                appearance.opaquePanel)
             if (view.background !== background) view.background = background
         }
         applySidebarBackdrop(geometry)

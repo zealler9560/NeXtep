@@ -19,7 +19,10 @@ data class WorkspaceGeometry(
     val displayRotation: Int = 0,
     /** Control strip at the phone's physical bottom instead of its top; the rail and main region shift to fill. */
     val controlAtBottom: Boolean = false,
-    /** Portrait-bottom only: the status bar band above the rail and main window; both start below it. */
+    /**
+     * Portrait: the status bar band, outside every pane. Apps keep it blank at their top, so the main
+     * app is cropped by it and the panes share the aspect of the screen below the status bar.
+     */
     val statusInset: Int = 0,
     /**
      * Under a wide picture the main app is laid out at the available width and this height, so it
@@ -117,6 +120,16 @@ data class WorkspaceGeometry(
     /** The input method container's offset: the main app's transform, applied in screen coordinates. */
     val imeTranslationY: Float get() = mainTranslationY - mainTaskTop * mainScale
 
+    /** The status band above the control strip in portrait-top; the control window covers it too. */
+    val controlStatusBand: Int get() = if (!isLandscape && !controlAtBottom) statusInset else 0
+
+    /**
+     * The same main window for an app that hides the status bar: its top is content, so nothing is
+     * cropped and the whole app fits the window's height. Below a bottom strip it keeps the crop.
+     */
+    fun uncropped(): WorkspaceGeometry = if (controlStatusBand == 0 || mainCanvasHeight > 0) this
+        else copy(statusInset = 0, topHeight = topHeight + statusInset)
+
     companion object {
         const val TOP_HEIGHT_FRACTION = 0.265f
         const val SIDEBAR_WIDTH_FRACTION = 0.267f
@@ -140,9 +153,9 @@ data class WorkspaceGeometry(
                 navigationInsets.right.coerceIn(0, screenWidth - left - 2),
                 navigationInsets.bottom.coerceIn(0, screenHeight - top - 2),
             )
-            // Portrait with the strip at the bottom: the status band is solved like a top inset,
-            // so the rail and the main window share one top edge and keep their proportions.
-            val safeStatusInset = if (controlAtBottom && screenHeight > screenWidth)
+            // Portrait: the status band is solved like a top inset. Panes take the aspect of the screen
+            // below it, and the main app is cropped by it instead of showing its blank top.
+            val safeStatusInset = if (screenHeight > screenWidth)
                 statusInset.coerceIn(0, screenHeight - top - safeInsets.bottom - 2) else 0
             val availableWidth = screenWidth - safeInsets.left - safeInsets.right
             val availableHeight = screenHeight - safeInsets.top - safeInsets.bottom - safeStatusInset

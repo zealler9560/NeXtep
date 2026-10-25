@@ -68,7 +68,7 @@ class WorkbenchFlowUiTest {
             val buttons = (0 until bar.childCount).map(bar::getChildAt)
             buttons.zipWithNext().forEach { (a, b) -> assertTrue(a.right <= b.left) }
             assertTrue(bar.right <= row.width)
-            assertEquals((48 * density).toInt(), buttons[0].height)
+            assertEquals((52 * density).toInt(), buttons[0].height)
             assertEquals("上班", (buttons[2] as TextView).text.toString())
             val title = field(strip, "titleView") as TextView
             assertTrue(title.text.any(Char::isDigit))

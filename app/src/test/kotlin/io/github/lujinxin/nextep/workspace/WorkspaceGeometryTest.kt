@@ -128,4 +128,30 @@ class WorkspaceGeometryTest {
             }
         }
     }
+
+    @Test
+    fun portraitStripCropsTheStatusBandAndAnImmersiveAppIsShownWhole() {
+        val status = 119
+        val profile = WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets(), statusBar = status)
+        val g = profile.geometry
+        // The main app starts below the status band; the strip's window covers the band above it.
+        assertEquals(status, g.availableTop)
+        assertEquals(status, g.controlStatusBand)
+        assertEquals(status, g.controlTop)
+        assertEquals(g.contentHeight.toFloat(), g.availableHeight * g.mainScale, 1f)
+        // Panes share the aspect of the screen below the status bar.
+        assertEquals(1216.0 / (2640 - status), profile.canvas.width.toDouble() / profile.canvas.height, .01)
+        val whole = g.uncropped()
+        assertEquals(0, whole.availableTop)
+        assertEquals(g.contentTop, whole.contentTop)
+        assertEquals(g.contentHeight, whole.contentHeight)
+        assertTrue(whole.mainScale < g.mainScale)
+        assertEquals(g.contentHeight.toFloat(), whole.availableHeight * whole.mainScale, 1f)
+        // Bottom strip and landscape have no band above the strip.
+        assertEquals(g, g.copy(controlAtBottom = true).uncropped().copy(controlAtBottom = false))
+        // A record solved without today's band is measured again.
+        assertEquals(null, WorkspaceLayoutProfile.decode(
+            WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets()).encode(), status))
+        assertEquals(profile, WorkspaceLayoutProfile.decode(profile.encode(), status))
+    }
 }

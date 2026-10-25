@@ -61,6 +61,7 @@ internal class WorkspaceViewport(
     private var wideSlotIndex: Int? = null
     private var wideAspect = WorkspaceLayoutProfile.DEFAULT_WIDE_ASPECT
     private var controlAtBottom = false
+    private var statusBar = 0
     private val notifyChanged = Runnable { onChanged() }
     private val displayManager = context.getSystemService(DisplayManager::class.java)
 
@@ -143,7 +144,9 @@ internal class WorkspaceViewport(
             "${metrics.densityDpi}:$rotation"
         if (cachedKey == key && cached != null) return
         val encoded = runCatching { preferences?.getString(key, null) }.getOrNull()
-        val savedProfile = WorkspaceLayoutProfile.decode(encoded)?.takeIf {
+        statusBar = measureStatusBar(metrics.density)
+        // A record solved without this status band fails decode's re-encode check and is measured again.
+        val savedProfile = WorkspaceLayoutProfile.decode(encoded, statusBar)?.takeIf {
             it.wideSlotIndex == null && (navigationButtonsEnabled || it.geometry.navigationInsets == WorkspaceNavigationInsets())
         }?.let { it.copy(geometry = it.geometry.copy(displayRotation = rotation)) }
         if (savedProfile != null) {
@@ -175,7 +178,7 @@ internal class WorkspaceViewport(
         }.onSuccess { measured ->
             updateSnapshot(measured, key)
             saveSnapshot(key)
-            NeXtepLog.info("workspace_viewport", "Recorded buttons=$navigationButtonsEnabled key=$key viewport=$measured")
+            NeXtepLog.info("workspace_viewport", "Recorded buttons=$navigationButtonsEnabled key=$key viewport=$measured status=$statusBar")
         }.onFailure {
             // Do not persist a failed measurement as the user's calibration.
             NeXtepLog.warn("workspace_viewport", "Window metrics unavailable; using full-display fallback", it)
@@ -187,13 +190,21 @@ internal class WorkspaceViewport(
     private fun updateSnapshot(snapshot: Snapshot, key: String?, saved: WorkspaceLayoutProfile? = null) {
         if (cached != snapshot || profile == null) {
             baseProfile = saved ?: WorkspaceLayoutProfile.create(snapshot.width, snapshot.height,
-                (snapshot.density * 160).roundToInt(), snapshot.navigationInsets, snapshot.displayRotation)
+                (snapshot.density * 160).roundToInt(), snapshot.navigationInsets, snapshot.displayRotation,
+                statusBar = statusBar)
             profile = checkNotNull(baseProfile).withWideSlot(wideSlotIndex, wideAspect).withControlAtBottom(controlAtBottom)
             SystemServerWorkspaceBridge.publishLayout(context, checkNotNull(profile))
         }
         cached = snapshot
         cachedKey = key
     }
+
+    /** The status bar's height even while hidden: the blank band every app keeps at its top. */
+    private fun measureStatusBar(density: Float): Int = runCatching {
+        val insets = context.getSystemService(WindowManager::class.java).maximumWindowMetrics.windowInsets
+        maxOf(insets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top,
+            insets.getInsetsIgnoringVisibility(WindowInsets.Type.displayCutout()).top)
+    }.getOrNull()?.takeIf { it > 0 } ?: (STATUS_FALLBACK_DP * density).roundToInt()
 
     private fun saveSnapshot(key: String) {
         runCatching {
@@ -211,5 +222,6 @@ internal class WorkspaceViewport(
         const val BUTTONS_PREFIX = "buttons_v1:"
         const val FULL_PREFIX = "full_v1:"
         const val MAX_PROFILES = 16
+        const val STATUS_FALLBACK_DP = 40
     }
 }

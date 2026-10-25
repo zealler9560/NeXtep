@@ -120,14 +120,14 @@ class WorkspaceLayoutProfileTest {
 
     @Test
     fun controlEdgeIsASessionChoiceThatNeverEntersTheRecordedProfile() {
-        val profile = WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets())
+        val reserve = (WorkspaceControlMetrics.STATUS_HEIGHT_DP * 476 / 160f).toInt()
+        val profile = WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets(), statusBar = reserve)
         val bottomProfile = profile.withControlAtBottom(true)
         val bottom = bottomProfile.geometry(SidebarSide.LEFT)
         assertTrue(bottom.controlAtBottom)
         assertEquals(SidebarSide.LEFT, bottom.sidebarSide)
         // The status band is free; the rail and the main window share that top edge and stay
         // proportional, so nothing is letterboxed beside the rail.
-        val reserve = (WorkspaceControlMetrics.STATUS_HEIGHT_DP * 476 / 160f).toInt()
         assertEquals(reserve, bottom.contentTop)
         assertEquals(bottom.contentTop, bottom.sidebarTop)
         assertEquals(bottom.controlTop, bottom.contentBottom)
@@ -140,7 +140,7 @@ class WorkspaceLayoutProfileTest {
         assertEquals(profile, bottomProfile.withControlAtBottom(false))
         assertEquals(profile.withWideSlot(1).withControlAtBottom(true), bottomProfile.withWideSlot(1))
         assertFalse(profile.geometry(SidebarSide.LEFT).controlAtBottom)
-        assertFalse(checkNotNull(WorkspaceLayoutProfile.decode(profile.encode())).geometry.controlAtBottom)
+        assertFalse(checkNotNull(WorkspaceLayoutProfile.decode(profile.encode(), reserve)).geometry.controlAtBottom)
     }
 
     @Test

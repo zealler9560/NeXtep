@@ -8,6 +8,7 @@ import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.framework.WindowContainerTransactionCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
+import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
 
 class MainTaskPresentationCoordinator(context: Context) {
@@ -59,15 +60,16 @@ class MainTaskPresentationCoordinator(context: Context) {
             )
         }
 
+        val main = SystemServerWorkspaceBridge.mainGeometry(applicationContext, geometry, task.taskId)
         if (presentedTaskId == task.taskId && activePresenter === surfacePresenter) {
-            return applyMainBounds(task, geometry).mapCatching { surfacePresenter.reapply(task.taskId, geometry).getOrThrow() }
+            return applyMainBounds(task, geometry).mapCatching { surfacePresenter.reapply(task.taskId, main).getOrThrow() }
         }
 
         // Fullscreen tasks inherit display bounds. Explicit screen-sized bounds survive
         // rotation and can leave a portrait Activity confined to the old landscape area.
         homePresented = false
         val surfaceResult = applyMainBounds(task, geometry).mapCatching {
-            surfacePresenter.present(task.taskId, geometry).getOrThrow()
+            surfacePresenter.present(task.taskId, main).getOrThrow()
         }
         if (surfaceResult.isSuccess) {
             val previousTaskId = presentedTaskId
@@ -116,7 +118,8 @@ class MainTaskPresentationCoordinator(context: Context) {
             restoreForeground().getOrThrow()
         }
         if (presentedTaskId == foreground.taskId) {
-            activePresenter?.reapply(foreground.taskId, geometry)
+            activePresenter?.reapply(foreground.taskId,
+                SystemServerWorkspaceBridge.mainGeometry(applicationContext, geometry, foreground.taskId))
                 ?.getOrThrow()
                 ?: error("Main presenter state is incomplete")
         } else {

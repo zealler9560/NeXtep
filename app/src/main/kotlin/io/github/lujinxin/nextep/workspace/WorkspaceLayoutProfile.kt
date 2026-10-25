@@ -11,6 +11,8 @@ data class WorkspaceLayoutProfile(
     val wideSlotIndex: Int? = null,
     /** Width/height of the wide slot's picture; 16:9 fills the width for any common video. */
     val wideAspect: Double = DEFAULT_WIDE_ASPECT,
+    /** The measured status bar height; not recorded, a record is checked against it on reading. */
+    val statusBar: Int = 0,
 ) {
     data class Slot(val width: Int, val height: Int, val top: Int)
     data class Source(val left: Int, val top: Int, val right: Int, val bottom: Int) {
@@ -45,10 +47,11 @@ data class WorkspaceLayoutProfile(
         }
     }
 
-    // The status bar/camera strip stays free; the video lives below it like the controls.
-    private val statusInset: Int get() = (WorkspaceControlMetrics.STATUS_HEIGHT_DP * densityDpi / 160f).toInt()
+    // Under a wide picture the status bar/camera strip stays inside the control strip, free; the video
+    // lives below it like the controls.
+    private val wideStatus: Int get() = (WorkspaceControlMetrics.STATUS_HEIGHT_DP * densityDpi / 160f).toInt()
 
-    private fun wideHeight(): Int = (geometry.topHeight - statusInset).coerceAtLeast(1)
+    private fun wideHeight(): Int = (geometry.topHeight - wideStatus).coerceAtLeast(1)
 
     fun canvas(index: Int): SlotGeometry = when {
         index == wideSlotIndex -> SlotGeometry(canvas.width, (canvas.width.toDouble() * wideHeight() /
@@ -66,32 +69,36 @@ data class WorkspaceLayoutProfile(
     fun withControlAtBottom(bottom: Boolean): WorkspaceLayoutProfile {
         if (bottom == geometry.controlAtBottom) return this
         return create(geometry.screenWidth, geometry.screenHeight, densityDpi, geometry.navigationInsets,
-            geometry.displayRotation, bottom, statusInset).withWideSlot(wideSlotIndex, wideAspect)
+            geometry.displayRotation, bottom, statusBar).withWideSlot(wideSlotIndex, wideAspect)
     }
 
     fun withWideSlot(index: Int?, aspect: Double = DEFAULT_WIDE_ASPECT): WorkspaceLayoutProfile {
         if (index == null && wideSlotIndex == null) return this
         val normal = create(geometry.screenWidth, geometry.screenHeight, densityDpi,
-            geometry.navigationInsets, geometry.displayRotation, geometry.controlAtBottom, geometry.statusInset)
+            geometry.navigationInsets, geometry.displayRotation, geometry.controlAtBottom, statusBar)
         if (index == null) return normal
+        // A picture at the top keeps the status strip inside the control strip (wideStatus), and the
+        // main app lays out at its own canvas there: nothing is cropped.
+        val base = if (geometry.controlAtBottom) normal else create(geometry.screenWidth, geometry.screenHeight,
+            densityDpi, geometry.navigationInsets, geometry.displayRotation).copy(statusBar = statusBar)
         val clamped = aspect.coerceIn(MIN_WIDE_ASPECT, MAX_WIDE_ASPECT)
-        val g = normal.geometry
+        val g = base.geometry
         val short = minOf(g.availableWidth, g.availableHeight)
         val long = maxOf(g.availableWidth, g.availableHeight)
         // The picture spans the full width at its aspect. Below it the main window and the three
         // rail cards share one aspect so an app keeps its layout when it swaps between them:
         // main = R·A, card = (R − 2g)/3 · A, main + card + g = short  ⇒  A = 3(short − g)/(4R − 2g).
-        val top = (statusInset + short / clamped).toInt().coerceIn(1, (long * .70).toInt())
+        val top = (wideStatus + short / clamped).toInt().coerceIn(1, (long * .70).toInt())
         if (g.isLandscape) {
             // Landscape keeps the proportional rail; the shared-aspect solve is a portrait layout.
             val rail = WorkspaceGeometry.proportionalRail(short, long, top).coerceAtLeast(gapPixels + 1)
-            return normal.copy(geometry = g.copy(topHeight = top, sidebarWidth = rail), wideSlotIndex = index, wideAspect = clamped)
+            return base.copy(geometry = g.copy(topHeight = top, sidebarWidth = rail), wideSlotIndex = index, wideAspect = clamped)
         }
         val remaining = long - top
         val shared = 3.0 * (short - gapPixels) / (4.0 * remaining - 2 * slotGapPixels)
         val main = (remaining * shared).toInt().coerceIn(1, short - gapPixels - 1)
         val rail = (short - main).coerceAtLeast(gapPixels + 1)
-        return normal.copy(geometry = g.copy(topHeight = top, sidebarWidth = rail,
+        return base.copy(geometry = g.copy(topHeight = top, sidebarWidth = rail,
             mainCanvasHeight = wideMainCanvasHeight(g.copy(topHeight = top, sidebarWidth = rail))),
             wideSlotIndex = index, wideAspect = clamped)
     }
@@ -147,22 +154,27 @@ data class WorkspaceLayoutProfile(
         const val MAX_WIDE_ASPECT = 2.4
 
         fun create(width: Int, height: Int, densityDpi: Int, insets: WorkspaceNavigationInsets,
-            displayRotation: Int = 0, controlAtBottom: Boolean = false, statusInset: Int = 0) =
+            displayRotation: Int = 0, controlAtBottom: Boolean = false, statusBar: Int = 0) =
             WorkspaceLayoutProfile(WorkspaceGeometry.forDisplay(width, height, density = densityDpi / 160f,
                 navigationInsets = insets, displayRotation = displayRotation, controlAtBottom = controlAtBottom,
-                statusInset = statusInset),
-                densityDpi, (WorkspaceControlMetrics.RAIL_GAP_DP * densityDpi / 160f).toInt().coerceAtLeast(1))
+                statusInset = statusBar),
+                densityDpi, (WorkspaceControlMetrics.RAIL_GAP_DP * densityDpi / 160f).toInt().coerceAtLeast(1),
+                statusBar = statusBar)
 
-        fun decode(encoded: String?): WorkspaceLayoutProfile? = runCatching {
+        /** [statusBar] is today's measured height: a record solved for another one (or none) is rejected. */
+        fun decode(encoded: String?, statusBar: Int = 0): WorkspaceLayoutProfile? = runCatching {
             val p = encoded?.split(',') ?: return@runCatching null
             val version = p.firstOrNull() ?: return@runCatching null
             if (version !in setOf("2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13") ||
                 p.size != when (version) { "7", "9", "11", "13" -> 34; "6", "8", "10", "12" -> 33; "5" -> 30; else -> 29 }) return@runCatching null
+            val wide = version in setOf("7", "9", "11", "13")
             val profile = WorkspaceLayoutProfile(WorkspaceGeometry(p[1].toInt(), p[2].toInt(),
                 p[3].toInt(), p[4].toInt(), SidebarSide.RIGHT,
                 WorkspaceNavigationInsets(p[7].toInt(), p[8].toInt(), p[9].toInt(), p[10].toInt()),
-                displayRotation = when (version) { "6", "7", "8", "9", "10", "11", "12", "13" -> p[32].toInt(); "5" -> p[29].toInt(); else -> 0 }),
-                p[5].toInt(), p[6].toInt(), if (version in setOf("7", "9", "11", "13")) p[33].toInt() else null)
+                displayRotation = when (version) { "6", "7", "8", "9", "10", "11", "12", "13" -> p[32].toInt(); "5" -> p[29].toInt(); else -> 0 },
+                // The band a portrait record was solved below; a wide record keeps it in its strip.
+                statusInset = if (p[2].toInt() > p[1].toInt() && !wide) statusBar else 0),
+                p[5].toInt(), p[6].toInt(), if (wide) p[33].toInt() else null, statusBar = statusBar)
             val expected = if (version.toInt() >= 6) profile.encode().split(',').toMutableList() else {
                 // Validate the old three-slot record before recalculating four slots.
                 (profile.encode().split(',').take(20) +
@@ -202,8 +214,8 @@ data class WorkspaceLayoutProfile(
                 // Recalculate the old slot proportions once using the already
                 // recorded display and navigation mode; never resample metrics.
                 create(profile.geometry.screenWidth, profile.geometry.screenHeight,
-                    profile.densityDpi, profile.geometry.navigationInsets, profile.geometry.displayRotation)
-                    .withWideSlot(profile.wideSlotIndex)
+                    profile.densityDpi, profile.geometry.navigationInsets, profile.geometry.displayRotation,
+                    statusBar = statusBar).withWideSlot(profile.wideSlotIndex)
             }
         }.getOrNull()
 

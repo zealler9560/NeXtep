@@ -37,20 +37,26 @@ class TopAppStripView(
     private var controlAtBottom = false
 
     /** The status/gesture reserve and pass-through band sit on the display's outer edge. */
-    fun setLandscape(value: Boolean, controlOnLeft: Boolean, controlAtBottom: Boolean = false) {
+    fun setLandscape(value: Boolean, controlOnLeft: Boolean, controlAtBottom: Boolean = false, statusBand: Int = 0) {
         landscape = value
         this.controlOnLeft = controlOnLeft
-        if (this.controlAtBottom != controlAtBottom) {
+        if (this.controlAtBottom != controlAtBottom || this.statusBand != statusBand) {
             this.controlAtBottom = controlAtBottom
+            this.statusBand = statusBand
             listOf(controls, dismissHint, mediaHost).forEach { view ->
                 (view.layoutParams as LayoutParams).apply {
-                    topMargin = if (controlAtBottom) 0 else dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
+                    topMargin = if (controlAtBottom) 0 else statusReserve()
                     bottomMargin = if (controlAtBottom) dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP) else 0
                 }
                 view.requestLayout()
             }
         }
     }
+
+    private var statusBand = 0
+
+    /** The measured status band the window covers above the strip, else the fixed reserve inside it. */
+    private fun statusReserve(): Int = if (statusBand > 0) statusBand else dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
 
     private val repository = TopAppRepository(context)
     private val mediaHost = FrameLayout(context).apply { visibility = GONE }
@@ -72,7 +78,7 @@ class TopAppStripView(
     }
 
     private val titleView = TextView(context).apply {
-        textSize = 12f
+        textSize = 13f
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER_VERTICAL
         maxLines = 1
@@ -81,7 +87,7 @@ class TopAppStripView(
     }
     private val heading = TextView(context).apply {
         text = AppLanguage.string(context, R.string.workbench_title)
-        textSize = 18f
+        textSize = 20f
         setSingleLine(true)
         ellipsize = android.text.TextUtils.TruncateAt.END
         gravity = Gravity.CENTER_VERTICAL
@@ -370,7 +376,7 @@ class TopAppStripView(
         isFocusable = true
         // Before the padding: an inset background replaces the view's padding with its insets.
         background = buttonBackground(selected)
-        dp(8 + SCENE_BUTTON_INSET_DP).let { setPadding(it, it, it, it) }
+        dp(9 + SCENE_BUTTON_INSET_DP).let { setPadding(it, it, it, it) }
     }
 
     /** Buttons share the empty-slot card tone; the current scene carries an accent ring.
@@ -392,7 +398,7 @@ class TopAppStripView(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(heading, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(24)))
+                addView(heading, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(27)))
                 addView(titleView, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             },
             LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply { marginEnd = dp(10) },
@@ -491,7 +497,8 @@ class TopAppStripView(
                         if (controlOnLeft) region.set(status, 0, height, width)
                         else region.set(0, 0, height - status, width)
                     } else {
-                        val status = if (wideSlot != null) 0 else dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
+                        val status = if (wideSlot != null) 0 else if (controlAtBottom)
+                            dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP) else statusReserve()
                         if (controlAtBottom) region.set(0, 0, width, height - status)
                         else region.set(0, status, width, height)
                     }
@@ -559,11 +566,11 @@ class TopAppStripView(
     }.getOrDefault(icon)
 
     private companion object {
-        const val APP_TILE_WIDTH_DP = 60
-        const val APP_GLYPH_SIZE_DP = 38
+        const val APP_TILE_WIDTH_DP = 66
+        const val APP_GLYPH_SIZE_DP = 43
         // The Find X9s Pro the row was tuned on: 1216 px, about 410 dp across.
         const val REFERENCE_WIDTH_DP = 410f
-        const val SCENE_BUTTON_SIZE_DP = 36
+        const val SCENE_BUTTON_SIZE_DP = 40
         const val SCENE_BUTTON_INSET_DP = 6
         const val EDGE_INSET_DP = 16
         const val REFRESH_INTERVAL_MS = 15_000L

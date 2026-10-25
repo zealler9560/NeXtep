@@ -81,6 +81,17 @@ object SystemServerWorkspaceBridge {
             ?.takeIf { it.fresh(android.os.SystemClock.uptimeMillis()) }
     }.getOrNull()
 
+    /**
+     * The main geometry for [taskId]. An app that hides the status bar draws content at its top, so
+     * it is shown whole instead of cropped; its last report holds until it shows the bar again.
+     */
+    internal fun mainGeometry(context: Context, geometry: WorkspaceGeometry, taskId: Int): WorkspaceGeometry {
+        val immersive = runCatching {
+            WorkspaceSceneRequest.decode(Settings.Global.getString(context.contentResolver, SCENE_KEY))
+        }.getOrNull()?.takeIf { it.fullscreen }?.taskId
+        return if (immersive == taskId) geometry.uncropped() else geometry
+    }
+
     internal fun sceneUri(): android.net.Uri = Settings.Global.getUriFor(SCENE_KEY)
 
     internal fun clearScene(context: Context) {
