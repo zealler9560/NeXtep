@@ -446,6 +446,11 @@ internal class WorkbenchToolsController(
     }.getOrDefault(false)
 
     fun exportDiagnostics(): Boolean {
+        io.github.lujinxin.nextep.logging.LauncherDiagnosticsContract.query(context, ::writeDiagnostics)
+        return true
+    }
+
+    private fun writeDiagnostics(launcher: String?): Boolean {
         // No logcat scraping: export only this module's bounded event metadata.
         val name = "NeXtep-diagnostics-${System.currentTimeMillis()}.txt"
         var created: android.net.Uri? = null
@@ -467,6 +472,7 @@ internal class WorkbenchToolsController(
                 it.write("Panes=${panes?.versionName} (${panes?.longVersionCode}) installed=${panes?.lastUpdateTime?.let(::time)} " +
                     "boot=${time(boot)}\ndevice=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} rom=${android.os.Build.DISPLAY}\n")
                 it.write(NeXtepLog.diagnostics())
+                it.write("\n--- launcher\n${launcher ?: "no answer"}\n")
             }
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         }.onSuccess { message(R.string.workbench_exported) }.onFailure {

@@ -45,6 +45,7 @@ object LauncherRuntime {
                 systemUiControlReceiver,
                 IntentFilter(TriggerBroadcastContract.ACTION_SYSTEMUI_SET_WORKSPACE).apply {
                     addAction(RecentTaskSelectionContract.ACTION_QUERY)
+                    addAction(io.github.lujinxin.nextep.logging.LauncherDiagnosticsContract.ACTION_QUERY)
                 },
                 null,
                 Handler(Looper.getMainLooper()),
@@ -174,6 +175,10 @@ object LauncherRuntime {
 
     private val systemUiControlReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == io.github.lujinxin.nextep.logging.LauncherDiagnosticsContract.ACTION_QUERY) {
+                io.github.lujinxin.nextep.logging.LauncherDiagnosticsContract.answer(this, intent)
+                return
+            }
             if (intent.action == RecentTaskSelectionContract.ACTION_QUERY) {
                 if (!isOrderedBroadcast || !LauncherPackageResolver.isCurrentHome(context)) return
                 val identity = intent.getParcelableExtra(
