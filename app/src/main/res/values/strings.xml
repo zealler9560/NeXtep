@@ -18,8 +18,8 @@
     <string name="tile_entry_summary">Add the Panes tile</string>
     <string name="gesture_title">Bottom corner gesture</string>
     <string name="gesture_summary">Swipe diagonally inward and upward from either bottom corner to open or close the workspace.</string>
-    <string name="auto_minimize_title">Minimize the previous app when switching</string>
-    <string name="auto_minimize_summary">Move the previous app into an empty small window. Switch normally if none is available.</string>
+    <string name="auto_minimize_title">Minimize the previous app when another opens</string>
+    <string name="auto_minimize_summary">Whenever an app opens in the main window (top bar, notification, control centre), the previous app moves into an empty small window. With none free it goes to the background.</string>
     <string name="font_value">Font: %1$s</string>
     <string name="font_bold">Bold</string>
     <string name="font_size_value">Font size: %1$d sp</string>

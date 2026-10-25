@@ -16,8 +16,8 @@
     <string name="tile_entry_summary">格子窓 タイルを追加</string>
     <string name="gesture_title">画面下隅のジェスチャー</string>
     <string name="gesture_summary">画面の左下または右下から中央へ斜め上にスワイプして、ワークスペースを開閉します。</string>
-    <string name="auto_minimize_title">トップバーで切り替える際に前のアプリを最小化</string>
-    <string name="auto_minimize_summary">前のアプリを空いている小ウィンドウに移します。空きがなければ通常どおり切り替えます。</string>
+    <string name="auto_minimize_title">別のアプリを開いたら前のアプリを最小化</string>
+    <string name="auto_minimize_summary">トップバー、通知、コントロールセンターなどからアプリを開くと、前のメインウィンドウのアプリを空いている小ウィンドウに移します。空きがなければバックグラウンドに移ります。</string>
     <string name="font_value">フォント：%1$s</string>
     <string name="font_bold">太字</string>
     <string name="font_size_value">文字サイズ：%1$d sp</string>

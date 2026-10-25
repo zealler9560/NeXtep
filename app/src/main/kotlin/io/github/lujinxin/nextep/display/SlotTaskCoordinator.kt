@@ -37,6 +37,8 @@ class SlotTaskCoordinator(
     private val onContentDragEntered: (Int) -> Unit = {},
     private val onContentDragEnded: (Boolean) -> Unit = {},
     private val pauseRules: SlotPauseRules? = null,
+    /** Any app that takes over the main pane sends the previous main app into an empty slot. */
+    private val autoMinimizeMain: () -> Boolean = { false },
 ) : VirtualDisplaySlot.Listener, TaskSwitcherView.Listener {
     internal data class ContentExchange(val slot: Int, val sourceTask: Int, val targetTask: Int)
 
@@ -780,15 +782,7 @@ class SlotTaskCoordinator(
             val minimizeSlot = if (autoMinimizeCurrent &&
                 currentMain != null && currentMain.taskId != existing?.taskId &&
                 isExchangeableMainTask(currentMain)
-            ) {
-                val tasks = taskRepository.runningTasks()
-                slotRecords.indexOfFirst { record ->
-                    val ready = record.state as? SlotState.Ready ?: return@indexOfFirst false
-                    record.pendingComponent == null && record.retainedTaskId == null &&
-                        !shouldRecoverMigratedTask(record) &&
-                        tasks.none { it.displayId == ready.displayId }
-                }
-            } else -1
+            ) emptySlot(taskRepository.runningTasks()) else -1
 
             fun minimizePreviousMain() {
                 if (minimizeSlot < 0 || currentMain == null) return
@@ -818,6 +812,47 @@ class SlotTaskCoordinator(
                 }, MAIN_LAUNCH_POLL_MS)
             }
         }
+    }
+
+    /** A slot with nothing in it or on its way to it, or -1. */
+    private fun emptySlot(tasks: List<TaskRepository.TaskSnapshot>): Int = slotRecords.indexOfFirst { record ->
+        val ready = record.state as? SlotState.Ready ?: return@indexOfFirst false
+        record.pendingComponent == null && record.retainedTaskId == null &&
+            !shouldRecoverMigratedTask(record) &&
+            tasks.none { it.displayId == ready.displayId }
+    }
+
+    private var autoMinimize: Runnable? = null
+
+    /**
+     * An app opened from outside the workspace (a notification, the control centre, a link) took the
+     * main pane from [previous]. Once [current] has settled and fully covers it, [previous] moves into
+     * an empty slot, as a top-bar switch does; with no empty slot it stays in the background.
+     */
+    private fun scheduleAutoMinimize(previous: Int?, current: TaskRepository.TaskSnapshot) {
+        if (previous == null || previous == current.taskId || !autoMinimizeMain() || !isExchangeableMainTask(current)) return
+        autoMinimize?.let(handler::removeCallbacks)
+        autoMinimize = Runnable {
+            autoMinimize = null
+            if (!active || suspended || transitionInProgress || recentSelectionPending || appLaunch.running ||
+                activeDrag != null || dragTransitionPending) return@Runnable
+            val tasks = taskRepository.runningTasks()
+            if (tasks.firstOrNull { it.displayId == Display.DEFAULT_DISPLAY }?.taskId != current.taskId) return@Runnable
+            // Still visible: the new task is translucent (a share sheet, a payment dialog) over it.
+            val task = tasks.firstOrNull { it.taskId == previous }
+                ?.takeIf { isExchangeableMainTask(it) && !it.visible } ?: return@Runnable
+            if (slotRecords.any { (it.state as? SlotState.Occupied)?.taskId == previous }) return@Runnable
+            val index = emptySlot(tasks)
+            val ready = slotRecords.getOrNull(index)?.state as? SlotState.Ready
+            if (ready == null) {
+                NeXtepLog.info("auto_minimize", "No empty slot for task=$previous; it stays in the background")
+                return@Runnable
+            }
+            NeXtepLog.info("auto_minimize", "task=$previous -> slot=$index after task=${current.taskId} took the main pane")
+            runTransition("auto minimize task=$previous") {
+                parkMainTaskInSlot(index, ready, task, leaveOverview = false)
+            }
+        }.also { handler.postDelayed(it, AUTO_MINIMIZE_DELAY_MS) }
     }
 
     private fun promoteExistingToMain(existing: TaskRepository.TaskSnapshot, beforePresent: () -> Unit = {},
@@ -2287,7 +2322,9 @@ class SlotTaskCoordinator(
         // Reuse this pass's snapshot. A fullscreen promotion restores layout, so that path
         // needs a fresh query before the presenter reads windowing mode/bounds.
         val presentationTasks = if (promotedSlot >= 0) taskRepository.runningTasks() else tasks
+        val previousMain = mainTaskPresenter.currentTaskId()
         mainTaskPresenter.reconcileForeground(geometryProvider(), presentationTasks)
+            .onSuccess { scheduleAutoMinimize(previousMain, foreground) }
             .onFailure { error ->
                 NeXtepLog.warn(
                     "main_task_presenter",
@@ -2583,6 +2620,7 @@ class SlotTaskCoordinator(
     private companion object {
         /** Idle time in a side pane before an app chosen for pausing is paused. */
         const val PAUSE_IDLE_MS = 2_000L
+        const val AUTO_MINIMIZE_DELAY_MS = 500L
         /** A check that met an exchange or launch looks again this soon after. */
         const val PAUSE_BUSY_RETRY_MS = 500L
         const val STALE_FRAME_DELAY_MS = 400L

@@ -41,6 +41,8 @@ The small panes' displays refresh at 30 frames per second, which looks the same 
 
 A row of favourite apps sits at the top: the ones you pin in Settings come first (pin as many as you like), and your most-used apps of the last seven days fill the row up to ten. Tap an icon to open it in the main pane, or long-press and drag it onto a small pane to open it there. The "+" on an empty pane adds an app too: the current main app moves into that pane, and the next app you pick from the Home screen opens in the main pane.
 
+However an app opens (the top bar, a notification, the control centre, the status bar, a link in another app), it takes the main pane and the previous main app moves into an empty small pane; with all four full it goes to the background. Turn this off with "Minimize the previous app when another opens" in Settings.
+
 <p align="center">
   <img src="assets/readme/favorites.gif" alt="Tapping a favourite opens it in the main pane; dragging one opens it in a small pane" width="300">
 </p>

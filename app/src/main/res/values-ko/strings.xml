@@ -16,8 +16,8 @@
     <string name="tile_entry_summary">격자창 타일 추가</string>
     <string name="gesture_title">화면 아래 모서리 제스처</string>
     <string name="gesture_summary">화면의 왼쪽 또는 오른쪽 아래 모서리에서 중앙을 향해 대각선 위로 스와이프하여 작업 공간을 열거나 닫습니다.</string>
-    <string name="auto_minimize_title">상단 표시줄에서 전환 시 이전 앱 최소화</string>
-    <string name="auto_minimize_summary">이전 앱을 비어 있는 작은 창으로 이동합니다. 빈 창이 없으면 일반적으로 전환합니다.</string>
+    <string name="auto_minimize_title">다른 앱을 열면 이전 앱 최소화</string>
+    <string name="auto_minimize_summary">상단 표시줄, 알림, 제어 센터 등에서 앱을 열면 이전 메인 창 앱을 비어 있는 작은 창으로 이동합니다. 빈 창이 없으면 백그라운드로 이동합니다.</string>
     <string name="font_value">글꼴: %1$s</string>
     <string name="font_bold">굵게</string>
     <string name="font_size_value">글꼴 크기: %1$d sp</string>

@@ -16,8 +16,8 @@
     <string name="tile_entry_summary">新增 格窗 快捷開關</string>
     <string name="gesture_title">底角觸發手勢</string>
     <string name="gesture_summary">從左下角向右上、或右下角向左上斜滑，開啟或關閉工作區。</string>
-    <string name="auto_minimize_title">頂列切換時縮小原應用程式</string>
-    <string name="auto_minimize_summary">原應用程式移入空的小視窗，沒有空位時正常切換。</string>
+    <string name="auto_minimize_title">開啟新應用程式時縮小原應用程式</string>
+    <string name="auto_minimize_summary">從頂列、通知、控制中心等任何地方開啟應用程式時，原大視窗應用程式移入空的小視窗；沒有空位時退到背景。</string>
     <string name="font_value">字型：%1$s</string>
     <string name="font_bold">粗體</string>
     <string name="font_size_value">字級：%1$d sp</string>

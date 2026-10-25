@@ -916,6 +916,7 @@ class NeXtepWindowController(
                     }
                 } },
                 pauseRules = pauseRules,
+                autoMinimizeMain = SystemUiRuntime::shouldAutoMinimizeMainOnTopAppSwitch,
             )
         }
     }

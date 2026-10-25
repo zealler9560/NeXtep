@@ -65,6 +65,8 @@ class TaskRepository(context: Context) {
         val userId: Int?,
         val vendorWindowed: Boolean = false,
         val baseComponent: ComponentName = component,
+        /** Shown on screen: false for a task fully covered by another one. */
+        val visible: Boolean = true,
     )
 
     private val activityManager = context.getSystemService(ActivityManager::class.java)
@@ -141,6 +143,7 @@ class TaskRepository(context: Context) {
             userId = TaskInfoCompat.readUserId(info),
             vendorWindowed = windowState.vendorWindowed,
             baseComponent = info.baseIntent.component ?: info.baseActivity ?: component,
+            visible = info.isVisible,
         )
     }
 

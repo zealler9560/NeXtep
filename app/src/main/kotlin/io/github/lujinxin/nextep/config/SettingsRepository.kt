@@ -43,7 +43,8 @@ class SettingsRepository(private val context: Context) {
         // Preserve the existing preference so disabling the old gesture also disables its replacement.
         statusBarGestureEnabled = preferences.getBoolean("status_bar_gesture_enabled", true),
         slotBackgroundSwipeEnabled = preferences.getBoolean("slot_background_swipe_enabled", true),
-        autoMinimizeMainOnTopAppSwitch = preferences.getBoolean("auto_minimize_main_on_top_app_switch", false),
+        // On by default now that it covers every way an app opens; a new key so the old default-off value does not carry over.
+        autoMinimizeMainOnTopAppSwitch = preferences.getBoolean("auto_minimize_main_v2", true),
         navigationButtonsEnabled = preferences.getBoolean("navigation_buttons_enabled", false),
     )
 
@@ -53,7 +54,7 @@ class SettingsRepository(private val context: Context) {
     }
 
     fun setAutoMinimizeMainOnTopAppSwitch(enabled: Boolean) {
-        preferences.edit().putBoolean("auto_minimize_main_on_top_app_switch", enabled).apply()
+        preferences.edit().putBoolean("auto_minimize_main_v2", enabled).apply()
         notifyTopContentChanged()
     }
 

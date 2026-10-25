@@ -27,7 +27,7 @@ data class WorkspaceTopConfig(
     val textBold: Boolean = false,
     val statusBarGestureEnabled: Boolean = true,
     val slotBackgroundSwipeEnabled: Boolean = true,
-    val autoMinimizeMainOnTopAppSwitch: Boolean = false,
+    val autoMinimizeMainOnTopAppSwitch: Boolean = true,
     val navigationButtonsEnabled: Boolean = false,
     val languageTag: String = "",
 )
@@ -217,8 +217,8 @@ object WorkspaceConfigClient {
                 WorkspaceConfigContract.EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED, true,
             ) ?: true,
             autoMinimizeMainOnTopAppSwitch = extras?.getBoolean(
-                WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, false,
-            ) ?: false,
+                WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, true,
+            ) ?: true,
             navigationButtonsEnabled = extras?.getBoolean(
                 WorkspaceConfigContract.EXTRA_NAVIGATION_BUTTONS_ENABLED, false,
             ) ?: false,
