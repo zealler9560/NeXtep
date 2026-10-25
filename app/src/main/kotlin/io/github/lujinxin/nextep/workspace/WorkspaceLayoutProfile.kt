@@ -33,10 +33,19 @@ data class WorkspaceLayoutProfile(
 
     private val leftGeometry = geometry.copy(sidebarSide = SidebarSide.LEFT)
     private val rightGeometry = geometry.copy(sidebarSide = SidebarSide.RIGHT)
-    val canvas = SlotGeometry.forRecordedDisplay(geometry.availableWidth, geometry.availableHeight, densityDpi)
+    /** A pane's display is as tall as the main app's window (the status band included), so an app keeps
+     * its window size when it changes pane; a pane shows it from [slotCrop] down, as the main window does. */
+    val canvas = SlotGeometry.forRecordedDisplay(geometry.availableWidth,
+        geometry.availableHeight + geometry.statusInset, densityDpi)
     // Apps lay out directly at the recorded usable resolution. Fit that complete
     // buffer into a slot; do not crop navigation pixels off an already laid-out app.
     val source = Source(0, 0, canvas.width, canvas.height)
+
+    /** Rows of a pane's display left out above its card, when its app keeps them blank (see TaskSwitcherView). */
+    val slotCrop: Int get() = geometry.statusInset
+
+    /** The candidate crop for pane [index]: none under a wide picture, where cards take their own aspect. */
+    fun slotCrop(index: Int): Int = if (wideSlotIndex == null) slotCrop else 0
     // Under a wide picture the rail cards fill the rail edge to edge; their displays take the
     // card's own aspect (see canvas) instead of leaving slack beside the main window.
     val slots: List<Slot> = if (wideSlotIndex == null) slotBounds(WORKSPACE_SLOT_COUNT) else {
@@ -114,8 +123,10 @@ data class WorkspaceLayoutProfile(
             val cellWidth = geometry.sidebarWidth - gapPixels
             val top = index * (base + slotGapPixels) + minOf(index, remainder)
             if (!fit) Slot(cellWidth, cellHeight, top) else {
-                val scale = minOf(cellWidth.toDouble() / canvas.width, cellHeight.toDouble() / canvas.height)
-                val height = (canvas.height * scale).toInt().coerceAtLeast(1)
+                // Cards take the aspect of what they show: the display below its crop.
+                val visible = canvas.height - slotCrop
+                val scale = minOf(cellWidth.toDouble() / canvas.width, cellHeight.toDouble() / visible)
+                val height = (visible * scale).toInt().coerceAtLeast(1)
                 Slot((canvas.width * scale).toInt().coerceAtLeast(1), height, top + (cellHeight - height) / 2)
             }
         }

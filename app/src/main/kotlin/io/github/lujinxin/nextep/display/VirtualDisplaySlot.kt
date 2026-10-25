@@ -391,7 +391,7 @@ class VirtualDisplaySlot(
     private fun updateDisplay(holder: SurfaceHolder, rebind: Boolean = false) {
         val profile = layoutProfile ?: return
         val geometry = profile.canvas(index)
-        view.setOutputSize(geometry.width, geometry.height)
+        view.setOutputSize(geometry.width, geometry.height, profile.slotCrop(index))
         holder.setFixedSize(geometry.width, geometry.height)
         if (!active || suspended) return
         val output = holder.surface.takeIf { it.isValid }

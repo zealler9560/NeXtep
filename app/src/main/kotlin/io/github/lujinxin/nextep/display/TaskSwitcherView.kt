@@ -3,6 +3,7 @@ package io.github.lujinxin.nextep.display
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.view.DragEvent
@@ -269,27 +270,76 @@ class TaskSwitcherView(
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean = true
 
-    fun setOutputSize(width: Int, height: Int) {
+    /** [crop]: rows at the top of the output the card leaves out when the app keeps them blank (the band
+     * the main window crops too); an app drawing there is shown whole, narrower. */
+    fun setOutputSize(width: Int, height: Int, crop: Int = 0) {
         require(width > 0 && height > 0)
-        if (outputWidth == width && outputHeight == height) return
+        if (outputWidth == width && outputHeight == height && topCrop == crop) return
         contentInput?.cancel()
         outputWidth = width
         outputHeight = height
+        topCrop = crop.coerceIn(0, height - 1)
         requestLayout()
     }
+
+    private var topCrop = 0
+    /** Whether this pane's app keeps [topCrop] blank; probed once it shows, remembered per app. */
+    private var topBlank = true
+    private val probeTop = Runnable(::probeTopBand)
+
+    private fun visibleCrop(): Int = if (topBlank) topCrop else 0
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
         if (outputWidth <= 0 || outputHeight <= 0) return
-        val scale = minOf(measuredWidth.toFloat() / outputWidth, measuredHeight.toFloat() / outputHeight)
+        val scale = minOf(measuredWidth.toFloat() / outputWidth, measuredHeight.toFloat() / (outputHeight - visibleCrop()))
         val widthSpec = MeasureSpec.makeMeasureSpec((outputWidth * scale).toInt().coerceAtLeast(1), MeasureSpec.EXACTLY)
         val heightSpec = MeasureSpec.makeMeasureSpec((outputHeight * scale).toInt().coerceAtLeast(1), MeasureSpec.EXACTLY)
         textureView.measure(widthSpec, heightSpec)
         coverView.measure(widthSpec, heightSpec)
     }
 
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        if (outputWidth <= 0 || outputHeight <= 0) return
+        // The output sits so that its rows below the crop are centred in the card; the rows above are
+        // clipped by the card (and by the SurfaceView's own clip, which also crops its surface).
+        val w = textureView.measuredWidth
+        val h = textureView.measuredHeight
+        val cropped = visibleCrop() * h / outputHeight
+        val x = (width - w) / 2
+        val y = (height - (h - cropped)) / 2 - cropped
+        textureView.layout(x, y, x + w, y + h)
+        coverView.layout(x, y, x + w, y + h)
+        textureView.clipBounds = Rect(0, cropped, w, h)
+    }
+
+    /** Looks at the output's top band: blank (one colour, like a status band) is left out of the card. */
+    private fun probeTopBand() {
+        val occupied = currentState as? SlotState.Occupied ?: return
+        if (topCrop <= 0 || coverHeld || !textureView.holder.surface.isValid) return
+        val band = Bitmap.createBitmap(32, 8, Bitmap.Config.ARGB_8888)
+        runCatching {
+            android.view.PixelCopy.request(textureView, Rect(0, 0, outputWidth, topCrop), band, { result ->
+                if (result == android.view.PixelCopy.SUCCESS) {
+                    val luma = IntArray(band.width * band.height).also { band.getPixels(it, 0, band.width, 0, 0, band.width, band.height) }
+                        .map { (Color.red(it) * 3 + Color.green(it) * 6 + Color.blue(it)) / 10 }
+                    val blank = luma.max() - luma.min() < TOP_BLANK_SPREAD
+                    blankTop[occupied.component.packageName] = blank
+                    if ((currentState as? SlotState.Occupied)?.taskId == occupied.taskId && topBlank != blank) {
+                        NeXtepLog.info("slot_output", "slot=$slotIndex ${occupied.component.packageName} top band " +
+                            if (blank) "blank: cropped" else "drawn: shown whole")
+                        topBlank = blank
+                        requestLayout()
+                    }
+                }
+                band.recycle()
+            }, android.os.Handler(android.os.Looper.getMainLooper()))
+        }.onFailure { band.recycle() }
+    }
+
     /** The app's picture at this card's size, for a cover that outlives the capture. */
-    internal fun captureCardPreview(): Bitmap? = captureProtectedPreview()?.let { full ->
+    internal fun captureCardPreview(): Bitmap? = captureProtectedPreview(visibleOnly = false)?.let { full ->
         val width = textureView.width
         val height = textureView.height
         // An unmeasured view: keep the capture as is, the cover scales it to fit.
@@ -299,15 +349,21 @@ class TaskSwitcherView(
 
     // Internal transitions dispose the frame immediately.
     // ScreenCapture still excludes any secure layers belonging to the source app.
-    internal fun captureProtectedPreview(): Bitmap? = runCatching {
+    /** [visibleOnly]: the part the card shows (below its crop); else the whole output, laid out like it. */
+    internal fun captureProtectedPreview(visibleOnly: Boolean = true): Bitmap? = runCatching {
+        fun shown(full: Bitmap): Bitmap {
+            val rows = if (visibleOnly && outputHeight > 0) visibleCrop() * full.height / outputHeight else 0
+            if (rows <= 0 || rows >= full.height) return full
+            return Bitmap.createBitmap(full, 0, rows, full.width, full.height - rows).also { if (it !== full) full.recycle() }
+        }
         // A paused app is stopped and may draw nothing; its held picture is what the card shows.
         if (coverHeld) (coverView.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
-            ?.let { return@runCatching it.copy(it.config ?: Bitmap.Config.ARGB_8888, false) }
+            ?.let { return@runCatching shown(it.copy(it.config ?: Bitmap.Config.ARGB_8888, false)) }
         val task = currentState as? SlotState.Occupied ?: return@runCatching null
         // The task fills this slot's canvas; that is the capture's crop.
         val crop = if (outputWidth > 0 && outputHeight > 0) Rect(0, 0, outputWidth, outputHeight) else null
         val bitmap = io.github.lujinxin.nextep.framework.TaskSurfaceCompat.capturePreview(task.taskId, crop)
-            ?: return@runCatching null
+            ?.let(::shown) ?: return@runCatching null
         // TextureView returns its logical portrait buffer. Follow the rail's
         // actual transform so reverse-landscape drag/swap previews face correctly.
         val panelRotation = (parent as? View)?.rotation ?: 0f
@@ -436,6 +492,16 @@ class TaskSwitcherView(
         statusView.animate().cancel()
         setStatusVisible(false)
         setOutputLayerShown(true)
+        (currentState as? SlotState.Occupied)?.let { occupied ->
+            // What this app showed last time decides the crop until the probe has looked again.
+            val remembered = blankTop[occupied.component.packageName] ?: true
+            if (topBlank != remembered) {
+                topBlank = remembered
+                requestLayout()
+            }
+            removeCallbacks(probeTop)
+            postDelayed(probeTop, TOP_PROBE_DELAY_MS)
+        }
 
         textureView.animate().cancel()
         // A coordinated exchange already animates a protected preview. The live
@@ -499,6 +565,10 @@ class TaskSwitcherView(
     private val transitionInterpolator = DecelerateInterpolator(1.6f)
 
     private companion object {
+        /** Per app, for SystemUI's lifetime: whether its top band (the crop) was blank when last probed. */
+        val blankTop = mutableMapOf<String, Boolean>()
+        const val TOP_BLANK_SPREAD = 24
+        const val TOP_PROBE_DELAY_MS = 800L
         const val TRANSITION_OUT_DURATION_MS = 120L
         const val TRANSITION_IN_DURATION_MS = 220L
         const val COVER_REVEAL_DELAY_MS = 600L

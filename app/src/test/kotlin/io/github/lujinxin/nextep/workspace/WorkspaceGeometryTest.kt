@@ -145,8 +145,12 @@ class WorkspaceGeometryTest {
         assertEquals(0, WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets(bottom = 120),
             statusBar = status).geometry.bottomGap)
         assertEquals(g.contentHeight.toFloat(), g.availableHeight * g.mainScale, 1f)
-        // Panes share the aspect of the screen below the status bar.
-        assertEquals(1216.0 / (2640 - status), profile.canvas.width.toDouble() / profile.canvas.height, .01)
+        // A pane's display is as big as the main app's window; the pane shows it below the same crop, so
+        // panes share the aspect of the screen below the status band.
+        assertEquals(2640, profile.canvas.height)
+        assertEquals(status, profile.slotCrop)
+        val slot = profile.slots.first()
+        assertEquals(1216.0 / (2640 - status), slot.width.toDouble() / slot.height, .01)
         val whole = g.uncropped()
         assertEquals(0, whole.availableTop)
         assertEquals(g.contentTop, whole.contentTop)
