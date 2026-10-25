@@ -87,11 +87,7 @@ object WorkspaceWallpaperBackdrop {
      * frame is dropped, so the panels keep their opaque fallback tone and the capture retries.
      */
     private fun visibleOrNull(bitmap: Bitmap?, source: String): Bitmap? {
-        if (bitmap == null) return null
-        if (!isBlank(bitmap)) {
-            NeXtepLog.info("wallpaper_backdrop", "Captured source=$source ${bitmap.width}x${bitmap.height}")
-            return bitmap
-        }
+        if (bitmap == null || !isBlank(bitmap)) return bitmap
         NeXtepLog.warn("wallpaper_backdrop", "Dropped a blank $source frame ${bitmap.width}x${bitmap.height}")
         bitmap.recycle()
         return null

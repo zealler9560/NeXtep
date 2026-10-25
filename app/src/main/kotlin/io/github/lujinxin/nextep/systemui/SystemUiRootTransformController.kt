@@ -71,7 +71,21 @@ object SystemUiRootTransformController {
             roots.keys.toList().forEach(::restore)
             transformedRoots.clear()
         }
-        NeXtepLog.info("systemui_root_transform", "active=$active roots=${roots.size}")
+        NeXtepLog.info("systemui_root_transform", "active=$active roots=${roots.size} " +
+            "crossWindowBlur=${roots.keys.firstOrNull()?.let(::crossWindowBlur)}")
+    }
+
+    /** Whether the system blurs behind windows now; ColorOS draws an opaque shade without it. */
+    private fun crossWindowBlur(view: View): Boolean? = runCatching {
+        view.context.getSystemService(WindowManager::class.java)?.isCrossWindowBlurEnabled
+    }.getOrNull()
+
+    private fun logShadeFit(view: View) {
+        val params = view.layoutParams as? WindowManager.LayoutParams
+        NeXtepLog.info("systemui_root_transform", "Shade fitted scale=${view.scaleX} " +
+            "crossWindowBlur=${crossWindowBlur(view)} blurBehind=${params?.let {
+                it.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND != 0 }}/${params?.blurBehindRadius} " +
+            "background=${view.background?.javaClass?.simpleName} alpha=${view.alpha}")
     }
 
     fun setGeometry(value: WorkspaceGeometry) {
@@ -109,7 +123,7 @@ object SystemUiRootTransformController {
         observeRoot(view)
         if (!active || !roots.containsKey(view)) return false
         apply(view)
-        transformedRoots[view] = true
+        if (transformedRoots.put(view, true) != true) logShadeFit(view)
         monitorUntilCollapsed(view)
         return true
     }
@@ -120,7 +134,7 @@ object SystemUiRootTransformController {
         roots.keys.toList().forEach { view ->
             if (view.parent != null && isNotificationShadeRoot(view)) {
                 apply(view)
-                transformedRoots[view] = true
+                if (transformedRoots.put(view, true) != true) logShadeFit(view)
                 monitorUntilCollapsed(view)
                 transformed = true
             }
