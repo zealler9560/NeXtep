@@ -180,10 +180,13 @@ object SettingsScreen {
         })
     }
 
-    /** QQ opens the group itself when it takes the share link; otherwise the browser page offers to open QQ. */
+    /**
+     * QQ's own link opens the group card, with its join button, in one step. QQ does not take the
+     * https share link (it went to the browser page), which stays the fallback without QQ.
+     */
     private fun openQqGroup(activity: AppCompatActivity) {
-        val view = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(QQ_GROUP_URL))
-        for (intent in listOf(android.content.Intent(view).setPackage("com.tencent.mobileqq"), view)) {
+        for (address in listOf(QQ_GROUP_CARD, QQ_GROUP_URL)) {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(address))
             try {
                 activity.startActivity(intent)
                 return
@@ -504,6 +507,7 @@ object SettingsScreen {
     )
 
     private const val MAX_TOP_APPS = 10
+    private const val QQ_GROUP_CARD = "mqqapi://card/show_pslcard?src_type=internal&version=1&uin=751247521&card_type=group&source=qrcode"
     /** The 格窗交流群 share link (group 751247521). */
     private const val QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=aR7P8LcImQYxngklpQ8M1bwzYn1Hnjh07fL%2F3N5qHnH9nKZAq%2B4VAaAniFqCVm3X&busi_data=eyJncm91cENvZGUiOiI3NTEyNDc1MjEiLCJ0b2tlbiI6InIvb1hMNTZiaWJ6WVhrajI3U1NTV1RROW9TeTNFUmpkejdIaitqNVFXQTFWNGlUU0JCVWhwM0QydDhMbmNtUk4iLCJ1aW4iOiIyNzU0MTE5MjkifQ%3D%3D&data=bsQls4gmP0EoHAFS89fiXTtwiAJULIASKHHTcbLpE6bYFgX7TtubfocaWiegnP_kAVhJ0PFqbayxD-8jJjF-oA&svctype=4&tempid=h5_group_info"
 }
