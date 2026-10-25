@@ -173,7 +173,9 @@ data class WorkspaceLayoutProfile(
                 WorkspaceNavigationInsets(p[7].toInt(), p[8].toInt(), p[9].toInt(), p[10].toInt()),
                 displayRotation = when (version) { "6", "7", "8", "9", "10", "11", "12", "13" -> p[32].toInt(); "5" -> p[29].toInt(); else -> 0 },
                 // The band a portrait record was solved below; a wide record keeps it in its strip.
-                statusInset = if (p[2].toInt() > p[1].toInt() && !wide) statusBar else 0),
+                statusInset = if (p[2].toInt() > p[1].toInt() && !wide) statusBar else 0,
+                bottomGap = WorkspaceGeometry.gestureGap(p[2].toInt() > p[1].toInt(), false,
+                    if (wide) 0 else statusBar, p[10].toInt(), p[5].toInt() / 160f)),
                 p[5].toInt(), p[6].toInt(), if (wide) p[33].toInt() else null, statusBar = statusBar)
             val expected = if (version.toInt() >= 6) profile.encode().split(',').toMutableList() else {
                 // Validate the old three-slot record before recalculating four slots.

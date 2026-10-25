@@ -8,14 +8,16 @@ class WorkspaceControlMetricsTest {
     @Test
     fun fullAndButtonLayoutsKeepEnoughHeightForTheWholeIconRow() {
         for (insets in listOf(WorkspaceNavigationInsets(), WorkspaceNavigationInsets(bottom = 132))) {
-            val profile = WorkspaceLayoutProfile.create(1080, 2354, 480, insets)
-            val controlHeight = profile.geometry.topHeight
-            assertTrue(controlHeight >= WorkspaceControlMetrics.COMPACT_HEIGHT_DP * 3)
-            assertTrue(controlHeight < profile.geometry.availableHeight / 4)
-            val rowHeight = controlHeight - (WorkspaceControlMetrics.STATUS_HEIGHT_DP +
-                WorkspaceControlMetrics.ACTION_HEIGHT_DP + WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP) * 3
-            assertTrue(rowHeight >= (WorkspaceControlMetrics.APP_ICON_SIZE_DP +
-                WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP) * 3)
+            // A small 360 dp phone with a 40 dp status bar, of which the main app keeps its 16 dp gap.
+            val status = 40 * 3
+            val crop = status - WorkspaceControlMetrics.STATUS_KEEP_DP * 3
+            val g = WorkspaceLayoutProfile.create(1080, 2354, 480, insets, statusBar = crop).geometry
+            assertTrue(g.topHeight < g.availableHeight / 4)
+            // Below the status bar the strip holds the whole block; only its top padding may shrink.
+            val below = g.controlStatusBand + g.topHeight - status
+            assertTrue(below >= (WorkspaceControlMetrics.ACTION_HEIGHT_DP + WorkspaceControlMetrics.APP_ROW_GAP_DP +
+                WorkspaceControlMetrics.APP_ICON_SIZE_DP + WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP +
+                WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP) * 3)
         }
     }
 

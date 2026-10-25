@@ -3,6 +3,12 @@ package io.github.lujinxin.nextep.workspace
 /** Shared dimensions for control content and the workspace region it occupies. */
 internal object WorkspaceControlMetrics {
     const val STATUS_HEIGHT_DP = 40
+    /** Of the app's own status band, this much stays visible above the main app as its top gap. */
+    const val STATUS_KEEP_DP = 16
+    /** Top strip: the title row starts this far below the status bar. */
+    const val CONTENT_TOP_PADDING_DP = 10
+    /** Gesture navigation, portrait under a top strip: the panes end this far above the screen bottom. */
+    const val GESTURE_GAP_DP = 24
     const val ACTION_HEIGHT_DP = 54
     const val APP_ICON_SIZE_DP = 50
     const val APP_ROW_GAP_DP = 10

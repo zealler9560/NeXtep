@@ -51,12 +51,32 @@ class TopAppStripView(
                 view.requestLayout()
             }
         }
+        // Under a top status band the block starts just below the status bar; elsewhere it is centred.
+        topAnchored = !value && !controlAtBottom
+        controls.gravity = if (topAnchored) Gravity.TOP else Gravity.CENTER_VERTICAL
+        requestLayout()
+    }
+
+    private var topAnchored = false
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        // A short strip (small phone, button navigation) gives up the top padding before the icons clip.
+        val room = if (!topAnchored) 0 else MeasureSpec.getSize(heightMeasureSpec) - statusReserve() - dp(
+            WorkspaceControlMetrics.ACTION_HEIGHT_DP + WorkspaceControlMetrics.APP_ROW_GAP_DP +
+                WorkspaceControlMetrics.APP_ICON_SIZE_DP + WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP +
+                WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP)
+        val padding = room.coerceIn(0, dp(WorkspaceControlMetrics.CONTENT_TOP_PADDING_DP))
+        if (controls.paddingTop != padding)
+            controls.setPadding(controls.paddingLeft, padding, controls.paddingRight, controls.paddingBottom)
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     private var statusBand = 0
 
-    /** The measured status band the window covers above the strip, else the fixed reserve inside it. */
-    private fun statusReserve(): Int = if (statusBand > 0) statusBand else dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
+    /** The status bar: the cropped band the window covers above the strip plus the part the main app
+     * keeps as its top gap, else the fixed reserve inside the strip. */
+    private fun statusReserve(): Int = if (statusBand > 0) statusBand + dp(WorkspaceControlMetrics.STATUS_KEEP_DP)
+        else dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
 
     private val repository = TopAppRepository(context)
     private val mediaHost = FrameLayout(context).apply { visibility = GONE }

@@ -9,6 +9,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.SidebarSide
+import io.github.lujinxin.nextep.workspace.WorkspaceControlMetrics
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
 import io.github.lujinxin.nextep.workspace.WorkspaceNavigationInsets
 import io.github.lujinxin.nextep.workspace.WorkspaceLayoutProfile
@@ -144,7 +145,9 @@ internal class WorkspaceViewport(
             "${metrics.densityDpi}:$rotation"
         if (cachedKey == key && cached != null) return
         val encoded = runCatching { preferences?.getString(key, null) }.getOrNull()
-        statusBar = measureStatusBar(metrics.density)
+        // The main app keeps the bottom of its status band as a gap below the strip; only the rest is cropped.
+        statusBar = (measureStatusBar(metrics.density) -
+            (WorkspaceControlMetrics.STATUS_KEEP_DP * metrics.density).roundToInt()).coerceAtLeast(0)
         // A record solved without this status band fails decode's re-encode check and is measured again.
         val savedProfile = WorkspaceLayoutProfile.decode(encoded, statusBar)?.takeIf {
             it.wideSlotIndex == null && (navigationButtonsEnabled || it.geometry.navigationInsets == WorkspaceNavigationInsets())

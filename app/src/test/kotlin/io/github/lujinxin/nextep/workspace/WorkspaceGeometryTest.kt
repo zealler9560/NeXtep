@@ -138,6 +138,13 @@ class WorkspaceGeometryTest {
         assertEquals(status, g.availableTop)
         assertEquals(status, g.controlStatusBand)
         assertEquals(status, g.controlTop)
+        // Gesture navigation: the strip gives up the gap below the panes, which keep their solved size.
+        val solved = WorkspaceGeometry.forDisplay(1216, 2640, density = 476 / 160f, statusInset = status, controlAtBottom = true)
+        assertEquals((WorkspaceControlMetrics.GESTURE_GAP_DP * 476 / 160f).toInt(), g.bottomGap)
+        assertEquals(2640 - g.bottomGap, g.contentBottom)
+        assertEquals(solved.contentHeight, g.contentHeight)
+        assertEquals(0, WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets(bottom = 120),
+            statusBar = status).geometry.bottomGap)
         assertEquals(g.contentHeight.toFloat(), g.availableHeight * g.mainScale, 1f)
         // Panes share the aspect of the screen below the status bar.
         assertEquals(1216.0 / (2640 - status), profile.canvas.width.toDouble() / profile.canvas.height, .01)
@@ -145,6 +152,7 @@ class WorkspaceGeometryTest {
         assertEquals(0, whole.availableTop)
         assertEquals(g.contentTop, whole.contentTop)
         assertEquals(g.contentHeight, whole.contentHeight)
+        assertEquals(g.contentBottom, whole.contentBottom)
         assertTrue(whole.mainScale < g.mainScale)
         assertEquals(g.contentHeight.toFloat(), whole.availableHeight * whole.mainScale, 1f)
         // Bottom strip and landscape have no band above the strip.

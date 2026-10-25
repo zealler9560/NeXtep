@@ -29,6 +29,8 @@ data class WorkspaceGeometry(
      * shares the rail cards' aspect and fills the main window edge to edge; 0 keeps the native canvas.
      */
     val mainCanvasHeight: Int = 0,
+    /** Gesture navigation: free space below the panes, taken from the strip so the panes keep their size. */
+    val bottomGap: Int = 0,
 ) {
     val isLandscape: Boolean get() = screenWidth > screenHeight
     // Surface rotations are quarter turns from the phone's natural portrait axes.
@@ -63,6 +65,7 @@ data class WorkspaceGeometry(
             navigationInsets.bottom <= screenHeight - navigationInsets.top - 2)
         require(availableWidth > 1 && availableHeight > 1)
         require(topHeight in 1 until (if (isLandscape) availableWidth else availableHeight))
+        require(bottomGap >= 0 && contentHeight > 1)
         require(statusInset >= 0 && statusInset <= screenHeight - navigationInsets.top - navigationInsets.bottom - 2)
         require(sidebarWidth in 1 until (if (isLandscape) availableHeight else availableWidth))
     }
@@ -87,7 +90,7 @@ data class WorkspaceGeometry(
         get() = availableWidth - if (isLandscape) topHeight else sidebarWidth
 
     val contentHeight: Int
-        get() = availableHeight - if (isLandscape) sidebarWidth else topHeight
+        get() = availableHeight - if (isLandscape) sidebarWidth else topHeight + bottomGap
 
     val contentLeft: Int
         get() = availableLeft + if (isLandscape) {
@@ -171,18 +174,27 @@ data class WorkspaceGeometry(
                 (count - 1) * slotGap) / (count + 1)).roundToInt()
                 .coerceIn(1, (longSide / 2).coerceAtLeast(1))
             val railWidth = proportionalRail(shortSide, longSide, controlThickness)
+            // The gap comes out of the strip: the panes keep their solved size and move up.
+            val bottomGap = gestureGap(!landscape, controlAtBottom, safeStatusInset, safeInsets.bottom, density)
+                .coerceAtMost(controlThickness - 1)
             return WorkspaceGeometry(
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
-                topHeight = controlThickness,
+                topHeight = controlThickness - bottomGap,
                 sidebarWidth = railWidth,
                 sidebarSide = sidebarSide,
                 navigationInsets = safeInsets,
                 displayRotation = displayRotation,
                 controlAtBottom = controlAtBottom,
                 statusInset = safeStatusInset,
+                bottomGap = bottomGap,
             )
         }
+
+        /** Only a portrait top strip over a cropped status band with no navigation bar leaves one. */
+        internal fun gestureGap(portrait: Boolean, controlAtBottom: Boolean, statusInset: Int, navigationBottom: Int,
+            density: Float): Int = if (portrait && !controlAtBottom && statusInset > 0 && navigationBottom == 0)
+            (WorkspaceControlMetrics.GESTURE_GAP_DP * density).toInt() else 0
 
         // Round down so portrait fitting is height-limited: no top/bottom
         // letterbox, no crop or stretch, and less than one pixel of side slack.
