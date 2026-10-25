@@ -26,10 +26,8 @@ internal class WorkspaceSwapAnimator(
 ) {
     /** A frame without a bitmap draws as a card; an empty one also carries the plus badge.
      * A [topFill] frame fills its width from the top, so a portrait page shows its player in a wide pane. */
-    /** [fromBand]/[toBand]: the share of the card a status band takes at that end. The main pane shows
-     * its app's kept status band; a side pane's app has none, and [bitmap] never includes it. */
     data class Frame(val bitmap: Bitmap?, val from: RectF, var to: RectF, val empty: Boolean = false,
-                     val topFill: Boolean = false, val fromBand: Float = 0f, val toBand: Float = 0f)
+                     val topFill: Boolean = false)
     private val manager = context.getSystemService(WindowManager::class.java)
     private var overlay: SwapPreviewView? = null
     private var animator: ValueAnimator? = null
@@ -75,6 +73,17 @@ internal class WorkspaceSwapAnimator(
             }
         })
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(::once, SHOW_TIMEOUT_MS)
+    }
+
+    /** Show [fresh] in frame [index] from now on, such as its app as the window it moved to shows it. */
+    fun refresh(index: Int, fresh: Bitmap?) {
+        fresh ?: return
+        val preview = overlay
+        val frame = preview?.frames?.getOrNull(index)
+        if (preview == null || frame == null) return fresh.recycle()
+        frame.bitmap?.recycle()
+        preview.frames = preview.frames.toMutableList().also { it[index] = frame.copy(bitmap = fresh) }
+        preview.invalidate()
     }
 
     /** Hold one more still frame over the frozen ones, such as a card laid out after the freeze. */
@@ -287,14 +296,6 @@ internal class SwapPreviewView(
             val top = if (frame.topFill) destination.top else destination.centerY() - imageHeight / 2
             val fitted = RectF(destination.centerX() - imageWidth / 2, top,
                 destination.centerX() + imageWidth / 2, top + imageHeight)
-            // The band takes the app's top colour and the content moves down under it, so the card
-            // lines up with the live app at either end instead of jumping when it is revealed.
-            val band = interpolate(frame.fromBand, frame.toBand) * destination.height()
-            if (band > 0f) {
-                sourceRect.set(0, 0, bitmap.width, 1)
-                canvas.drawBitmap(bitmap, sourceRect, RectF(fitted.left, fitted.top, fitted.right, fitted.top + band), bitmapPaint)
-                fitted.top += band
-            }
             sourceRect.set(0, 0, bitmap.width, bitmap.height)
             canvas.drawBitmap(bitmap, sourceRect, fitted, bitmapPaint)
         }

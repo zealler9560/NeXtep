@@ -42,24 +42,20 @@ class WorkspaceSwapAnimatorTest {
         assertNull(preview(animator))
     }
 
-    @Test fun aCardBoundForTheMainPaneDrawsTheStatusBandInTheAppsTopColour() {
-        // An app from a side pane has no status band; in the main pane it has one, so the card draws
-        // the band in the app's top colour and its content below it.
-        val app = Bitmap.createBitmap(10, 20, Bitmap.Config.ARGB_8888).apply {
-            eraseColor(android.graphics.Color.BLUE)
-            for (x in 0 until 10) setPixel(x, 0, android.graphics.Color.RED)
-        }
-        val card = RectF(0f, 0f, 100f, 200f)
-        val view = SwapPreviewView(context, listOf(WorkspaceSwapAnimator.Frame(app, card, card, toBand = 0.2f)),
-            emptyList(), WorkbenchAppearance.DARK)
-        fun pixel(progress: Float, y: Int) = Bitmap.createBitmap(100, 200, Bitmap.Config.ARGB_8888).also {
-            view.progress = progress
-            view.layout(0, 0, 100, 200)
-            view.draw(android.graphics.Canvas(it))
-        }.getPixel(50, y)
-        assertEquals(android.graphics.Color.BLUE, pixel(0f, 20))
-        assertEquals(android.graphics.Color.RED, pixel(1f, 20))
-        assertEquals(android.graphics.Color.BLUE, pixel(1f, 60))
+    @Test fun aCardTakesTheFreshPictureItFadesFromAndReleasesTheOldOne() {
+        val animator = WorkspaceSwapAnimator(context)
+        val source = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888)
+        val rect = RectF(0f, 0f, 240f, 480f)
+        animator.animate(source, null, true, rect, rect, rect, 320, 640) { }
+        val fresh = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888)
+        animator.refresh(1, fresh)
+        assertTrue(source.isRecycled)
+        assertSame(fresh, (checkNotNull(preview(animator)) as SwapPreviewView).frames[1].bitmap)
+        // Without an overlay the picture has nowhere to go and is released.
+        animator.cancel()
+        val late = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888)
+        animator.refresh(1, late)
+        assertTrue(late.isRecycled)
     }
 
     @Test fun previewWaitsForCompletionInsteadOfAFixedDelay() {

@@ -975,15 +975,14 @@ class NeXtepWindowController(
                     (next.sidebarTop - old.sidebarTop).toFloat())
             }
             if (i == index) frames.add(WorkspaceSwapAnimator.Frame(
-                sourceTask?.let { mainContentPreview(it, old) }, main, to, fromBand = mainBand(old)))
+                sourceTask?.let { mainPanePreview(it, old) }, main, to))
             else frames.add(WorkspaceSwapAnimator.Frame(slotWindows[i].view.captureProtectedPreview(), from, to,
                 empty = states.getOrNull(i) !is SlotState.Occupied))
         }
         // Target expands on its own side while the other tasks cross to the opposite rail.
         frames.add(WorkspaceSwapAnimator.Frame(slotWindows[index].view.captureProtectedPreview(),
             android.graphics.RectF(bounds[index]), android.graphics.RectF(next.contentLeft.toFloat(),
-                next.contentTop.toFloat(), next.contentRight.toFloat(), next.contentBottom.toFloat()),
-            toBand = mainBand(next)))
+                next.contentTop.toFloat(), next.contentRight.toFloat(), next.contentBottom.toFloat())))
         swapAnimator.animateFrames(frames, listOf(main) + bounds.map { android.graphics.RectF(it) },
             old.screenWidth, old.screenHeight) { reveal ->
             if (!valid() || !workspaceVisible || suspended || !contentSide(destinationSide)) {
@@ -1070,27 +1069,26 @@ class NeXtepWindowController(
             slotCoordinator?.slotStates()?.getOrNull(targetIndex) is SlotState.Occupied
         val targetPreview = if (targetIndex != null) {
             if (targetOccupied) slotWindows[targetIndex].view.captureProtectedPreview() else null
-        } else mainTaskPresenter.currentTaskId()?.let { mainContentPreview(it, geometry) }
-        val band = if (targetIndex == null) mainBand(geometry) else 0f
-        swapAnimator.animateFrames(listOf(
-            // The vacated card travels back as well, so no bare panel shows where it lands.
-            WorkspaceSwapAnimator.Frame(targetPreview, android.graphics.RectF(targetRect),
-                android.graphics.RectF(sourceRect), empty = !targetOccupied, fromBand = band),
-            WorkspaceSwapAnimator.Frame(sourcePreview, startRect, android.graphics.RectF(targetRect), toBand = band),
-        ), listOf(android.graphics.RectF(sourceRect), android.graphics.RectF(targetRect)),
-            geometry.screenWidth, geometry.screenHeight, move)
+        } else mainTaskPresenter.currentTaskId()?.let { mainPanePreview(it, geometry) }
+        // An app lays out again when it changes window, and some pad their top for a status bar even in a
+        // side pane: just before the card fades, it takes the app as the main window now shows it.
+        val reveal: (() -> Unit) -> Unit = if (targetIndex != null) move else { show ->
+            move {
+                mainTaskPresenter.currentTaskId()?.let { swapAnimator.refresh(1, mainPanePreview(it, geometry())) }
+                show()
+            }
+        }
+        swapAnimator.animate(sourcePreview, targetPreview, !targetOccupied, startRect,
+            android.graphics.RectF(sourceRect), android.graphics.RectF(targetRect),
+            geometry.screenWidth, geometry.screenHeight, reveal)
     }
 
-    /** The share of the main pane its app's kept status band takes (see WorkspaceGeometry.statusInset). */
-    private fun mainBand(geometry: WorkspaceGeometry): Float = if (geometry.statusInset == 0) 0f else
-        dp(io.github.lujinxin.nextep.workspace.WorkspaceControlMetrics.STATUS_KEEP_DP) / geometry.availableHeight
-
-    /** The main app as its pane shows it, less that band: side panes draw apps from their top. */
-    private fun mainContentPreview(taskId: Int, base: WorkspaceGeometry): android.graphics.Bitmap? {
+    /** The main app cut to what its pane shows (the capture is of the whole screen). */
+    private fun mainPanePreview(taskId: Int, base: WorkspaceGeometry): android.graphics.Bitmap? {
         val shot = io.github.lujinxin.nextep.framework.TaskSurfaceCompat.capturePreview(taskId) ?: return null
         val g = SystemServerWorkspaceBridge.mainGeometry(context, base, taskId)
         val scale = shot.height / g.screenHeight.toFloat()
-        val top = ((g.availableTop + mainBand(g) * g.availableHeight) * scale).toInt().coerceIn(0, shot.height - 1)
+        val top = (g.availableTop * scale).toInt().coerceIn(0, shot.height - 1)
         val bottom = (g.availableBottom * scale).toInt().coerceIn(top + 1, shot.height)
         if (top == 0 && bottom == shot.height) return shot
         return android.graphics.Bitmap.createBitmap(shot, 0, top, shot.width, bottom - top).also { shot.recycle() }
