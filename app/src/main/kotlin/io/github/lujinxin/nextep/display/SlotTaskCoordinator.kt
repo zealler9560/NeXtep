@@ -144,7 +144,11 @@ class SlotTaskCoordinator(
                 if (!active || suspended || desktopSelection.target != target) return
                 showHomeOnDefaultDisplay()
                 slots[index].view.setDropHighlighted(true)
-                showMessage(AppLanguage.string(applicationContext, R.string.workbench_choose_main_app))
+                // Once per workspace entry; the highlighted slot carries the hint after that.
+                if (!desktopHintShown) {
+                    desktopHintShown = true
+                    showMessage(AppLanguage.string(applicationContext, R.string.workbench_choose_main_app))
+                }
                 handler.postDelayed({ if (desktopSelection.target == target) clearDesktopSelection() }, 120_000L)
             }
             val main = taskRepository.foregroundTask()?.takeIf(::isExchangeableMainTask)
@@ -378,6 +382,7 @@ class SlotTaskCoordinator(
 
     private var active = false
     private var activatedAt = 0L
+    private var desktopHintShown = false
     private var suspended = false
     private var transitionInProgress = false
     private var recentSelectionPending = false
@@ -445,6 +450,7 @@ class SlotTaskCoordinator(
         }
         active = true
         activatedAt = SystemClock.uptimeMillis()
+        desktopHintShown = false
         rebindNotBefore = 0L
         reconcilePaused = false
         reconciliationTick = 0
