@@ -417,14 +417,14 @@ class TaskSwitcherView(
                 .scaleY(CONTENT_EXIT_SCALE)
                 .setDuration(TRANSITION_OUT_DURATION_MS)
                 .setInterpolator(transitionInterpolator)
-                .withEndAction(::hideOutputIfEmpty)
                 .start()
         } else {
             textureView.alpha = 0f
             textureView.scaleX = 1f
             textureView.scaleY = 1f
-            hideOutputIfEmpty()
         }
+        // Not after the fade: where the layer ignores the view's alpha, the old frame flashed meanwhile.
+        hideOutputIfEmpty()
         badgeHighlighted = highlighted
         statusView.background = appearance.emptyBadge(resources.displayMetrics.density, highlighted)
         statusView.animate().cancel()

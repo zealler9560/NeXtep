@@ -140,7 +140,9 @@ internal class WorkspaceViewport(
     private fun refresh() {
         val metrics = context.resources.displayMetrics
         val rotation = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: 0
-        val prefix = if (navigationButtonsEnabled) BUTTONS_PREFIX else FULL_PREFIX
+        // Three-button navigation is read from the system each time; the old manual switch still forces it.
+        val buttons = navigationButtonsEnabled || threeButtonNavigation()
+        val prefix = if (buttons) BUTTONS_PREFIX else FULL_PREFIX
         val key = "$prefix${metrics.widthPixels}:${metrics.heightPixels}:" +
             "${metrics.densityDpi}:$rotation"
         if (cachedKey == key && cached != null) return
@@ -150,7 +152,7 @@ internal class WorkspaceViewport(
             (WorkspaceControlMetrics.STATUS_KEEP_DP * metrics.density).roundToInt()).coerceAtLeast(0)
         // A record solved without this status band fails decode's re-encode check and is measured again.
         val savedProfile = WorkspaceLayoutProfile.decode(encoded, statusBar)?.takeIf {
-            it.wideSlotIndex == null && (navigationButtonsEnabled || it.geometry.navigationInsets == WorkspaceNavigationInsets())
+            it.wideSlotIndex == null && (buttons || it.geometry.navigationInsets == WorkspaceNavigationInsets())
         }?.let { it.copy(geometry = it.geometry.copy(displayRotation = rotation)) }
         if (savedProfile != null) {
             val g = savedProfile.geometry
@@ -160,7 +162,7 @@ internal class WorkspaceViewport(
             return
         }
         val stored = runCatching {
-            Snapshot.decode(encoded, navigationButtonsEnabled, rotation)
+            Snapshot.decode(encoded, buttons, rotation)
         }.getOrNull()
         if (stored != null) {
             updateSnapshot(stored, key)
@@ -173,7 +175,7 @@ internal class WorkspaceViewport(
             val window = context.getSystemService(WindowManager::class.java).maximumWindowMetrics
             val bounds = window.bounds
             check(bounds.width() > 1 && bounds.height() > 1)
-            val navigation = if (navigationButtonsEnabled) {
+            val navigation = if (buttons) {
                 val inset = window.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars())
                 WorkspaceNavigationInsets(inset.left, inset.top, inset.right, inset.bottom)
             } else WorkspaceNavigationInsets()
@@ -181,7 +183,7 @@ internal class WorkspaceViewport(
         }.onSuccess { measured ->
             updateSnapshot(measured, key)
             saveSnapshot(key)
-            NeXtepLog.info("workspace_viewport", "Recorded buttons=$navigationButtonsEnabled key=$key viewport=$measured status=$statusBar")
+            NeXtepLog.info("workspace_viewport", "Recorded buttons=$buttons key=$key viewport=$measured status=$statusBar")
         }.onFailure {
             // Do not persist a failed measurement as the user's calibration.
             NeXtepLog.warn("workspace_viewport", "Window metrics unavailable; using full-display fallback", it)
@@ -201,6 +203,10 @@ internal class WorkspaceViewport(
         cached = snapshot
         cachedKey = key
     }
+
+    private fun threeButtonNavigation(): Boolean = runCatching {
+        android.provider.Settings.Secure.getInt(context.contentResolver, "navigation_mode", -1) == 0
+    }.getOrDefault(false)
 
     /** The status bar's height even while hidden: the blank band every app keeps at its top. */
     private fun measureStatusBar(density: Float): Int = runCatching {
