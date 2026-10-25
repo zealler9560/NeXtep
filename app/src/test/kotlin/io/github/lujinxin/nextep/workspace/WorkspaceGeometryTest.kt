@@ -138,20 +138,11 @@ class WorkspaceGeometryTest {
         assertEquals(status, g.availableTop)
         assertEquals(status, g.controlStatusBand)
         assertEquals(status, g.controlTop)
-        // Gesture navigation: the strip gives up the gap below the panes, which keep their solved size.
-        assertEquals((WorkspaceControlMetrics.GESTURE_GAP_DP * 476 / 160f).toInt(), g.bottomGap)
-        assertEquals(2640 - g.bottomGap, g.contentBottom)
-        assertEquals(WorkspaceGeometry.proportionalRail(1216, g.availableHeight, g.topHeight + g.bottomGap), g.sidebarWidth)
-        assertEquals(0, WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets(bottom = 120),
-            statusBar = status).geometry.bottomGap)
-        // A hidden gesture handle leaves only a slot gap, and a record of either layout is not the other's.
-        val hidden = WorkspaceLayoutProfile.create(1216, 2640, 476, WorkspaceNavigationInsets(), statusBar = status,
-            gestureBar = false)
-        assertEquals((WorkspaceControlMetrics.SLOT_GAP_DP * 476 / 160f).toInt(), hidden.geometry.bottomGap)
-        assertEquals(g.sidebarWidth, hidden.geometry.sidebarWidth)
-        assertEquals(hidden, WorkspaceLayoutProfile.decode(hidden.encode(), status, gestureBar = false))
-        assertEquals(null, WorkspaceLayoutProfile.decode(hidden.encode(), status))
-        assertEquals(hidden.geometry, hidden.withControlAtBottom(true).withControlAtBottom(false).geometry)
+        // Gesture navigation: the main window and the panes reach the screen bottom, with the handle over
+        // the app's own bottom bar as everywhere else.
+        assertEquals(0, g.bottomGap)
+        assertEquals(2640, g.contentBottom)
+        assertEquals(WorkspaceGeometry.proportionalRail(1216, g.availableHeight, g.topHeight), g.sidebarWidth)
         assertEquals(g.contentHeight.toFloat(), g.availableHeight * g.mainScale, 1f)
         // A pane's display is as big as the main app's window; the pane shows it below the same crop, so
         // panes share the aspect of the screen below the status band.

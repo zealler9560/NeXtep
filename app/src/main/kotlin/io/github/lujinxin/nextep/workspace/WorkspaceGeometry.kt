@@ -29,7 +29,8 @@ data class WorkspaceGeometry(
      * shares the rail cards' aspect and fills the main window edge to edge; 0 keeps the native canvas.
      */
     val mainCanvasHeight: Int = 0,
-    /** Gesture navigation: free space below the panes, taken from the strip so the panes keep their size. */
+    /** Always 0 now: under gesture navigation the main window and the panes reach the screen bottom, with the
+     * handle over the app's own bottom bar as everywhere else. Kept for the published layout's field. */
     val bottomGap: Int = 0,
 ) {
     val isLandscape: Boolean get() = screenWidth > screenHeight
@@ -146,7 +147,6 @@ data class WorkspaceGeometry(
             displayRotation: Int = 0,
             controlAtBottom: Boolean = false,
             statusInset: Int = 0,
-            gestureBar: Boolean = true,
         ): WorkspaceGeometry {
             require(screenWidth > 1 && screenHeight > 1) { "Display dimensions must be usable" }
             require(density.isFinite() && density > 0f) { "Display density must be positive and finite" }
@@ -177,36 +177,24 @@ data class WorkspaceGeometry(
             val solved = ((longSide + count * gap * longSide.toDouble() / shortSide -
                 (count - 1) * slotGap) / (count + 1)).roundToInt()
                 .coerceIn(1, (longSide / 2).coerceAtLeast(1))
-            // The gap comes out of the strip: the panes keep their solved size and move up.
-            val bottomGap = gestureGap(!landscape, controlAtBottom, safeStatusInset, safeInsets.bottom, density, gestureBar)
-                .coerceAtMost(solved - 1)
             // A short phone may solve a strip too low for its controls; it keeps them whole, and the
             // rail narrows with the main window so the cards sit a little apart instead.
             val strip = if (landscape || safeStatusInset == 0) 0 else (density * (WorkspaceControlMetrics.HEADER_MIN_DP +
                 if (controlAtBottom) WorkspaceControlMetrics.STATUS_HEIGHT_DP else WorkspaceControlMetrics.STATUS_KEEP_DP)).toInt()
-            val controlThickness = maxOf(solved, strip + bottomGap).coerceAtMost((longSide / 2).coerceAtLeast(1))
+            val controlThickness = maxOf(solved, strip).coerceAtMost((longSide / 2).coerceAtLeast(1))
             val railWidth = proportionalRail(shortSide, longSide, controlThickness)
             return WorkspaceGeometry(
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
-                topHeight = controlThickness - bottomGap,
+                topHeight = controlThickness,
                 sidebarWidth = railWidth,
                 sidebarSide = sidebarSide,
                 navigationInsets = safeInsets,
                 displayRotation = displayRotation,
                 controlAtBottom = controlAtBottom,
                 statusInset = safeStatusInset,
-                bottomGap = bottomGap,
             )
         }
-
-        /** Only a portrait top strip over a cropped status band with no navigation bar leaves one. With the
-         * gesture handle hidden it is a slot gap, enough to keep the cards' corners off the screen's. */
-        internal fun gestureGap(portrait: Boolean, controlAtBottom: Boolean, statusInset: Int, navigationBottom: Int,
-            density: Float, gestureBar: Boolean = true): Int =
-            if (portrait && !controlAtBottom && statusInset > 0 && navigationBottom == 0)
-                ((if (gestureBar) WorkspaceControlMetrics.GESTURE_GAP_DP else WorkspaceControlMetrics.SLOT_GAP_DP) * density).toInt()
-            else 0
 
         // Round down so portrait fitting is height-limited: no top/bottom
         // letterbox, no crop or stretch, and less than one pixel of side slack.
