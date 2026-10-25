@@ -51,23 +51,24 @@ class TopAppStripView(
                 view.requestLayout()
             }
         }
-        // Under a top status band the block starts just below the status bar; elsewhere it is centred.
+        // Under a top status band the block sits at the strip's bottom, a gap above the windows;
+        // elsewhere it is centred.
         topAnchored = !value && !controlAtBottom
-        controls.gravity = if (topAnchored) Gravity.TOP else Gravity.CENTER_VERTICAL
+        controls.gravity = if (topAnchored) Gravity.BOTTOM else Gravity.CENTER_VERTICAL
         requestLayout()
     }
 
     private var topAnchored = false
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // A short strip (small phone, button navigation) gives up the top padding before the icons clip.
+        // A short strip (small phone, button navigation) gives up the gap above the windows before the
+        // rows reach into the status reserve.
         val room = if (!topAnchored) 0 else MeasureSpec.getSize(heightMeasureSpec) - statusReserve() - dp(
             WorkspaceControlMetrics.ACTION_HEIGHT_DP + WorkspaceControlMetrics.APP_ROW_GAP_DP +
-                WorkspaceControlMetrics.APP_ICON_SIZE_DP + WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP +
-                WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP)
-        val padding = room.coerceIn(0, dp(WorkspaceControlMetrics.CONTENT_TOP_PADDING_DP))
-        if (controls.paddingTop != padding)
-            controls.setPadding(controls.paddingLeft, padding, controls.paddingRight, controls.paddingBottom)
+                WorkspaceControlMetrics.APP_ICON_SIZE_DP + WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP)
+        val gap = room.coerceIn(0, dp(WorkspaceControlMetrics.CONTENT_GAP_DP))
+        if (controls.paddingBottom != gap)
+            controls.setPadding(controls.paddingLeft, controls.paddingTop, controls.paddingRight, gap)
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
@@ -158,12 +159,11 @@ class TopAppStripView(
             LinearLayout(context).apply {
                 controls = this
                 orientation = LinearLayout.VERTICAL
-                // Title row and app row sit as one block, centred in the space below the status band.
+                // Title row and app row sit as one block; setLandscape places it (see topAnchored).
                 gravity = Gravity.CENTER_VERTICAL
                 // Title, first icon and the scene buttons' visible edge share one EDGE_INSET_DP line;
                 // the buttons carry a touch inset, so the end padding gives that much back.
-                setPadding(dp(EDGE_INSET_DP), 0, dp(EDGE_INSET_DP - SCENE_BUTTON_INSET_DP),
-                    dp(WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP))
+                setPadding(dp(EDGE_INSET_DP), 0, dp(EDGE_INSET_DP - SCENE_BUTTON_INSET_DP), 0)
                 addView(
                     actionRow(),
                     LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(WorkspaceControlMetrics.ACTION_HEIGHT_DP)),
