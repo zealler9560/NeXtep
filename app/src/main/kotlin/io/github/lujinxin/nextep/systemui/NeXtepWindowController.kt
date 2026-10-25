@@ -1077,9 +1077,11 @@ class NeXtepWindowController(
                 bounds[index].height,
                 Gravity.TOP,
             ).apply {
+                // The rail's gap splits evenly: the screen edge and the main window each get half,
+                // the same 4dp that separates the slots, on either side.
                 val slack = (geometry.sidebarWidth - profile.gapPixels - bounds[index].width).coerceAtLeast(0) / 2
-                marginStart = slack + if (logicalSidebarSide(geometry) == SidebarSide.RIGHT) profile.gapPixels else 0
-                marginEnd = slack + if (logicalSidebarSide(geometry) == SidebarSide.LEFT) profile.gapPixels else 0
+                marginStart = slack + profile.gapPixels / 2
+                marginEnd = slack + profile.gapPixels - profile.gapPixels / 2
                 topMargin = bounds[index].top
             }
         }
