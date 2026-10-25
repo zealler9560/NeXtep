@@ -830,18 +830,24 @@ class SlotTaskCoordinator(
      * main pane from [previous]. Once [current] has settled and fully covers it, [previous] moves into
      * an empty slot, as a top-bar switch does; with no empty slot it stays in the background.
      */
-    private fun scheduleAutoMinimize(previous: Int?, current: TaskRepository.TaskSnapshot) {
+    private fun scheduleAutoMinimize(previous: Int?, current: TaskRepository.TaskSnapshot, attempt: Int = 0) {
         if (previous == null || previous == current.taskId || !autoMinimizeMain() || !isExchangeableMainTask(current)) return
         autoMinimize?.let(handler::removeCallbacks)
         autoMinimize = Runnable {
             autoMinimize = null
-            if (!active || suspended || transitionInProgress || recentSelectionPending || appLaunch.running ||
-                activeDrag != null || dragTransitionPending) return@Runnable
+            fun later(reason: String) {
+                if (attempt + 1 < AUTO_MINIMIZE_ATTEMPTS) scheduleAutoMinimize(previous, current, attempt + 1)
+                else NeXtepLog.info("auto_minimize", "task=$previous stays in the background: $reason")
+            }
+            if (!active || suspended) return@Runnable
+            if (transitionInProgress || recentSelectionPending || appLaunch.running || activeDrag != null ||
+                dragTransitionPending) return@Runnable later("busy")
             val tasks = taskRepository.runningTasks()
             if (tasks.firstOrNull { it.displayId == Display.DEFAULT_DISPLAY }?.taskId != current.taskId) return@Runnable
-            // Still visible: the new task is translucent (a share sheet, a payment dialog) over it.
-            val task = tasks.firstOrNull { it.taskId == previous }
-                ?.takeIf { isExchangeableMainTask(it) && !it.visible } ?: return@Runnable
+            val task = tasks.firstOrNull { it.taskId == previous }?.takeIf(::isExchangeableMainTask) ?: return@Runnable
+            // Still visible: its closing animation is running, or the new task is translucent over it (a
+            // share sheet, a payment dialog); after about 2 s it is the latter and stays where it is.
+            if (task.visible) return@Runnable later("still visible under task=${current.taskId}")
             if (slotRecords.any { (it.state as? SlotState.Occupied)?.taskId == previous }) return@Runnable
             val index = emptySlot(tasks)
             val ready = slotRecords.getOrNull(index)?.state as? SlotState.Ready
@@ -2636,6 +2642,7 @@ class SlotTaskCoordinator(
         /** Idle time in a side pane before an app chosen for pausing is paused. */
         const val PAUSE_IDLE_MS = 2_000L
         const val AUTO_MINIMIZE_DELAY_MS = 500L
+        const val AUTO_MINIMIZE_ATTEMPTS = 4
         /** A check that met an exchange or launch looks again this soon after. */
         const val PAUSE_BUSY_RETRY_MS = 500L
         const val STALE_FRAME_DELAY_MS = 400L
