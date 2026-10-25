@@ -2,9 +2,7 @@ package io.github.lujinxin.nextep.systemui
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Region
 import android.text.format.DateFormat
 import android.view.Gravity
@@ -108,7 +106,6 @@ class TopAppStripView(
     private var scenes = emptyList<WorkbenchScene>()
     private var activeScene: String? = null
     private var appearance = WorkbenchAppearance.DARK
-    private val dividerPaint = Paint().apply { color = WorkbenchAppearance.DARK.outline }
     private var loading = false
     private var refreshPending = false
     private var lastRefreshAt = 0L
@@ -243,14 +240,6 @@ class TopAppStripView(
         deferredApps?.let { entries -> deferredApps = null; renderApps(entries) }
     }
 
-    override fun dispatchDraw(canvas: Canvas) {
-        super.dispatchDraw(canvas)
-        val thickness = resources.displayMetrics.density
-        // The divider faces the content, whichever edge the control area occupies.
-        if (controlAtBottom) canvas.drawRect(0f, 0f, width.toFloat(), thickness, dividerPaint)
-        else canvas.drawRect(0f, height - thickness, width.toFloat(), height.toFloat(), dividerPaint)
-    }
-
     fun refresh(force: Boolean = false) {
         removeCallbacks(refreshRetry)
         val now = System.currentTimeMillis()
@@ -315,7 +304,6 @@ class TopAppStripView(
         background = value.background()
         titleView.setTextColor(value.text)
         heading.setTextColor(value.text)
-        dividerPaint.color = value.outline
         renderScenes()
         invalidate()
     }

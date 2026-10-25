@@ -1179,8 +1179,9 @@ class NeXtepWindowController(
         ))
     }
 
+    // No resting outline: on the screen edge it read as a gap the slots, flush on their side, do not have.
     private fun mainFrame(geometry: WorkspaceGeometry) = WorkbenchFrameDrawable(appearance.opaquePanel,
-        appearance.accent, dp(14), dp(1).coerceAtLeast(1f), panelBackdrop(geometry.contentLeft, geometry.contentTop))
+        Color.TRANSPARENT, dp(14), dp(1).coerceAtLeast(1f), panelBackdrop(geometry.contentLeft, geometry.contentTop))
 
     /** Recut the main pane's corners after the wallpaper frame or the pane itself changed. */
     private fun refreshMainFrame(geometry: WorkspaceGeometry) {
