@@ -18,7 +18,6 @@
     <string name="workbench_shopping_apps">Pinduoduo · Douyin Mall · JD · Taobao</string>
     <string name="workbench_compare_failed">Keep enough empty side windows and check the installed app versions.</string>
     <string name="workbench_compare_missing">No installed app supports these search entries.</string>
-    <string name="workbench_capture">Allow capture for this session</string>
     <string name="workbench_hide_recents">Hide workspace tasks from Recents</string>
     <string name="workbench_export">Export diagnostics</string>
     <string name="workbench_exported">Diagnostics saved to Downloads.</string>
@@ -49,7 +48,6 @@
     <string name="control_top">Top</string>
     <string name="control_bottom">Bottom</string>
     <string name="workbench_hide_recents_summary">Only while the workspace is open; tasks are not removed.</string>
-    <string name="workbench_capture_summary">Allowed until exit or lock; never saved.</string>
     <string name="workbench_export_summary">Saves recent event metadata of this module to Downloads.</string>
     <string name="workbench_export_action">Export</string>
     <string name="workbench_exit_summary">Returns every app to its normal window.</string>

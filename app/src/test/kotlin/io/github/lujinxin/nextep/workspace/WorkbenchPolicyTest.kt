@@ -4,18 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WorkbenchPolicyTest {
-    @Test fun capturePermissionNeverSurvivesAWorkspaceSession() {
-        val policy = WorkspaceCapturePolicy()
-        assertFalse(policy.captureAllowed)
-        repeat(5) {
-            policy.allowForSession()
-            assertTrue(policy.captureAllowed)
-            policy.reset()
-            assertFalse(policy.captureAllowed)
-        }
-        assertFalse(WorkspaceCapturePolicy().captureAllowed)
-    }
-
     @Test fun searchReusesMatchingAppsAndReservesDistinctEmptySlots() {
         assertEquals(listOf(2, 1, 3), WorkspaceSearchPlacement.plan(
             listOf("main", "jd", "taobao", "pdd"), listOf("video", "taobao", null, null)))

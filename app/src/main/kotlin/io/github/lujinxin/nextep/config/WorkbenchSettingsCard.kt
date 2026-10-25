@@ -30,7 +30,6 @@ internal class WorkbenchSettingsCard(
     val side: MaterialButtonToggleGroup
     val position: MaterialButtonToggleGroup
     val recents: SwitchMaterial
-    val capture: SwitchMaterial
     val layoutCard: View
     val privacyCard: View
     val supportCard: View
@@ -72,8 +71,6 @@ internal class WorkbenchSettingsCard(
         privacy.addView(SettingsScreen.sectionTitle(activity, activity.getString(R.string.section_privacy)), SettingsScreen.matchWidth())
         recents = toggle(privacy, activity.getString(R.string.workbench_hide_recents),
             activity.getString(R.string.workbench_hide_recents_summary), TriggerBroadcastContract.COMMAND_HIDE_RECENTS)
-        capture = toggle(privacy, activity.getString(R.string.workbench_capture),
-            activity.getString(R.string.workbench_capture_summary), TriggerBroadcastContract.COMMAND_CAPTURE)
         privacyCard = SettingsScreen.sectionCard(activity).apply { addView(privacy) }
 
         val support = SettingsScreen.sectionContent(activity)
@@ -122,9 +119,6 @@ internal class WorkbenchSettingsCard(
             side.select(state.getString(TriggerBroadcastContract.EXTRA_SIDEBAR_SIDE).orEmpty())
             position.select(state.getBoolean(TriggerBroadcastContract.EXTRA_CONTROL_BOTTOM).toString())
             recents.isChecked = state.getBoolean(TriggerBroadcastContract.EXTRA_HIDE_RECENTS)
-            capture.isChecked = state.getBoolean(TriggerBroadcastContract.EXTRA_CAPTURE_ALLOWED)
-            // Capture is a session grant; it needs a visible workspace to take effect.
-            capture.isEnabled = state.getBoolean(TriggerBroadcastContract.EXTRA_ACTIVE)
         }
         workspaceActive = state?.getBoolean(TriggerBroadcastContract.EXTRA_ACTIVE) == true
         // Saving and restoring act on the live panes, so both need an open workspace.

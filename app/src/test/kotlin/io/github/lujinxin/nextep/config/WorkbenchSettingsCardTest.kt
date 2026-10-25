@@ -16,13 +16,12 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class WorkbenchSettingsCardTest {
-    private fun state(appearance: String, side: String, bottom: Boolean, recents: Boolean, capture: Boolean, active: Boolean) =
+    private fun state(appearance: String, side: String, bottom: Boolean, recents: Boolean, active: Boolean) =
         Bundle().apply {
             putString(TriggerBroadcastContract.EXTRA_APPEARANCE, appearance)
             putString(TriggerBroadcastContract.EXTRA_SIDEBAR_SIDE, side)
             putBoolean(TriggerBroadcastContract.EXTRA_CONTROL_BOTTOM, bottom)
             putBoolean(TriggerBroadcastContract.EXTRA_HIDE_RECENTS, recents)
-            putBoolean(TriggerBroadcastContract.EXTRA_CAPTURE_ALLOWED, capture)
             putBoolean(TriggerBroadcastContract.EXTRA_ACTIVE, active)
         }
 
@@ -31,7 +30,7 @@ class WorkbenchSettingsCardTest {
     @Test fun replyFromSystemUiIsMirroredAndEveryChangeBecomesExactlyOneCommand() {
         val activity = Robolectric.buildActivity(AppCompatActivity::class.java).create().get()
         activity.setTheme(com.google.android.material.R.style.Theme_MaterialComponents_DayNight_NoActionBar)
-        var reply = state("LIGHT", "LEFT", true, true, false, true)
+        var reply = state("LIGHT", "LEFT", true, true, true)
         val sent = mutableListOf<Pair<String, String>>()
         // SystemUI answers on a later message, never inside the tap that sent the command.
         val replies = mutableListOf<() -> Unit>()
@@ -39,8 +38,8 @@ class WorkbenchSettingsCardTest {
         val card = WorkbenchSettingsCard(activity, { done -> done(ready(reply)) }) { key, value, done ->
             sent += key to value
             reply = when (key) {
-                TriggerBroadcastContract.COMMAND_APPEARANCE -> state(value, "LEFT", true, true, false, true)
-                TriggerBroadcastContract.COMMAND_CONTROL_BOTTOM -> state("DARK", "LEFT", value.toBoolean(), true, false, true)
+                TriggerBroadcastContract.COMMAND_APPEARANCE -> state(value, "LEFT", true, true, true)
+                TriggerBroadcastContract.COMMAND_CONTROL_BOTTOM -> state("DARK", "LEFT", value.toBoolean(), true, true)
                 else -> reply
             }
             replies += { done(ready(reply)) }
@@ -53,8 +52,7 @@ class WorkbenchSettingsCardTest {
         assertEquals("LEFT", checkedTag(card.side))
         assertEquals("true", checkedTag(card.position))
         assertTrue(card.recents.isChecked)
-        assertFalse(card.capture.isChecked)
-        assertTrue(card.appearance.isEnabled && card.capture.isEnabled)
+        assertTrue(card.appearance.isEnabled)
         (card.appearance.getChildAt(2) as MaterialButton).performClick()
         assertEquals(listOf(TriggerBroadcastContract.COMMAND_APPEARANCE to "DARK"), sent)
         drain()
@@ -75,14 +73,13 @@ class WorkbenchSettingsCardTest {
         assertEquals("false", checkedTag(card.position))
         assertFalse((card.position.getChildAt(1) as MaterialButton).isChecked)
         assertEquals(3, sent.size)
-        // No reply: controls are disabled and the capture grant cannot be requested.
+        // No reply: controls are disabled.
         card.apply(null)
         assertFalse(card.appearance.isEnabled)
-        assertFalse(card.capture.isEnabled)
-        card.apply(state("LIGHT", "RIGHT", false, false, true, false))
+        assertFalse(card.recents.isEnabled)
+        card.apply(state("LIGHT", "RIGHT", false, false, false))
         assertEquals("LIGHT", checkedTag(card.appearance))
-        assertTrue(card.capture.isChecked)
-        assertFalse(card.capture.isEnabled)
+        assertFalse(card.recents.isChecked)
         assertEquals(3, sent.size)
     }
 
@@ -93,7 +90,7 @@ class WorkbenchSettingsCardTest {
         val scenes = io.github.lujinxin.nextep.workspace.WorkbenchScene.encode(listOf(
             io.github.lujinxin.nextep.workspace.WorkbenchScene.builtins()[0],
             io.github.lujinxin.nextep.workspace.WorkbenchScene("工作", "com.a.mail", listOf("com.a.chat", null, null, null))))
-        fun withScenes(active: Boolean) = state("LIGHT", "LEFT", false, false, false, active).apply {
+        fun withScenes(active: Boolean) = state("LIGHT", "LEFT", false, false, active).apply {
             putString(TriggerBroadcastContract.EXTRA_SCENES, scenes)
         }
         val sent = mutableListOf<Pair<String, String>>()

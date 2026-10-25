@@ -25,7 +25,7 @@ class WorkspaceSwapAnimatorTest {
         .apply { isAccessible = true }.get(animator) as? View
     private fun WorkspaceSwapAnimator(context: android.content.Context) = WorkspaceSwapAnimator(context) { WorkbenchAppearance.DARK }
 
-    @Test fun contentExpansionUsesOneSecureOverlayAndReleasesEveryAppPreviewOnCancel() {
+    @Test fun contentExpansionUsesOneCapturableOverlayAndReleasesEveryAppPreviewOnCancel() {
         val animator = WorkspaceSwapAnimator(context)
         val bitmaps = List(5) { Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888) }
         val frames = bitmaps.mapIndexed { index, bitmap -> WorkspaceSwapAnimator.Frame(bitmap,
@@ -33,7 +33,8 @@ class WorkspaceSwapAnimatorTest {
         var moved = false
         animator.animateFrames(frames, frames.map { it.from }, 320, 640) { moved = true }
         val view = checkNotNull(preview(animator))
-        assertTrue((view.layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+        // ColorOS 16 blurs the control centre from a screen capture, where a secure window is black.
+        assertEquals(0, (view.layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_SECURE)
         animator.cancel()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         assertFalse(moved)
@@ -41,7 +42,7 @@ class WorkspaceSwapAnimatorTest {
         assertNull(preview(animator))
     }
 
-    @Test fun protectedPreviewWaitsForCompletionInsteadOfAFixedDelay() {
+    @Test fun previewWaitsForCompletionInsteadOfAFixedDelay() {
         val animator = WorkspaceSwapAnimator(context)
         val source = Bitmap.createBitmap(40, 80, Bitmap.Config.ARGB_8888)
         var moves = 0
@@ -53,7 +54,6 @@ class WorkspaceSwapAnimatorTest {
             reveal = it
         }
         val view = checkNotNull(preview(animator))
-        assertTrue((view.layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(800))
         assertEquals(1, moves)
         assertSame(view, preview(animator))

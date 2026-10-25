@@ -18,7 +18,6 @@
     <string name="workbench_shopping_apps">拼多多 · 抖音商城 · 京东 · 淘宝</string>
     <string name="workbench_compare_failed">请留出足够的空侧窗，并检查已安装应用版本是否支持搜索入口。</string>
     <string name="workbench_compare_missing">未找到支持这些搜索入口的已安装应用。</string>
-    <string name="workbench_capture">本次允许截图／录屏</string>
     <string name="workbench_hide_recents">在最近任务中隐藏工作台应用</string>
     <string name="workbench_export">导出诊断日志</string>
     <string name="workbench_exported">诊断日志已保存到下载目录。</string>
@@ -49,7 +48,6 @@
     <string name="control_top">顶部</string>
     <string name="control_bottom">底部</string>
     <string name="workbench_hide_recents_summary">仅工作台打开期间生效，不会结束任务。</string>
-    <string name="workbench_capture_summary">退出或锁屏后恢复保护，不会保存。</string>
     <string name="workbench_export_summary">把本模块最近的事件元数据保存到下载目录。</string>
     <string name="workbench_export_action">导出</string>
     <string name="workbench_exit_summary">所有应用回到普通窗口。</string>

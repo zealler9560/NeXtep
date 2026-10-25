@@ -67,7 +67,7 @@ internal class WorkspaceInternalDragController(
             source.rootView.getLocationOnScreen(origin)
             bounds.offset(origin[0], origin[1])
         }
-        val bitmap = if (source is TaskSwitcherView) source.capturePreview() else captureTile(source)
+        val bitmap = if (source is TaskSwitcherView) source.captureProtectedPreview() else captureTile(source)
         val view = Preview(bitmap, bounds.width().coerceAtLeast(1), bounds.height().coerceAtLeast(1))
         view.point.set(bounds.exactCenterX(), bounds.exactCenterY())
         return runCatching {

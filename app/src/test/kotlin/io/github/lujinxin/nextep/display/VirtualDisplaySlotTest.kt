@@ -36,12 +36,4 @@ class VirtualDisplaySlotTest {
         assertEquals(0, first)
         assertEquals(1, second)
     }
-
-    @Test fun repeatingTheProtectedStateKeepsTheOutputLayer() {
-        val layer = slot.view.textureView
-        slot.setCaptureAllowed(false)
-        slot.setCaptureAllowed(false)
-        assertSame(layer, slot.view.textureView)
-        assertEquals(false, slot.view.isCaptureAllowed())
-    }
 }

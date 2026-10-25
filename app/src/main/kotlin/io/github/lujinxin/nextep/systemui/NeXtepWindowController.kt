@@ -137,9 +137,8 @@ class NeXtepWindowController(
         override fun onLowMemory() = Unit
     }
     private var recentsHidden = workbenchPreferences?.getBoolean("hide_recents", false) ?: false
-    private val capturePolicy = io.github.lujinxin.nextep.workspace.WorkspaceCapturePolicy()
     private var controlAtBottom = workbenchPreferences?.getBoolean("control_bottom", false) ?: false
-    private val tools = WorkbenchToolsController(context, { appearance }, { capturePolicy.captureAllowed },
+    private val tools = WorkbenchToolsController(context, { appearance },
         { intent -> slotCoordinator?.openExternalInMain(intent)
             ?: Result.failure(IllegalStateException("Workspace unavailable")) },
         { intents, done -> slotCoordinator?.openSearches(intents, done)
@@ -152,7 +151,6 @@ class NeXtepWindowController(
         putString(TriggerBroadcastContract.EXTRA_SIDEBAR_SIDE, sidebarSide.name)
         putBoolean(TriggerBroadcastContract.EXTRA_HIDE_RECENTS, recentsHidden)
         putBoolean(TriggerBroadcastContract.EXTRA_CONTROL_BOTTOM, controlAtBottom)
-        putBoolean(TriggerBroadcastContract.EXTRA_CAPTURE_ALLOWED, capturePolicy.captureAllowed)
         putString(TriggerBroadcastContract.EXTRA_SCENES, WorkbenchScene.encode(scenes))
     }
 
@@ -279,10 +277,6 @@ class NeXtepWindowController(
             setControlAtBottom(value.toBoolean())
             true
         }
-        TriggerBroadcastContract.COMMAND_CAPTURE -> {
-            setCaptureAllowed(value.toBoolean())
-            capturePolicy.captureAllowed == value.toBoolean()
-        }
         TriggerBroadcastContract.COMMAND_EXPORT_DIAGNOSTICS -> tools.exportDiagnostics()
         TriggerBroadcastContract.COMMAND_SCENE_SAVE, TriggerBroadcastContract.COMMAND_SCENE_APPLY,
         TriggerBroadcastContract.COMMAND_SCENE_DELETE, TriggerBroadcastContract.COMMAND_SCENE_RESTORE_DEFAULTS ->
@@ -320,10 +314,8 @@ class NeXtepWindowController(
                     if (!workspaceVisible) releaseWallpaperAfterExit()
                 }
                 Intent.ACTION_USER_PRESENT -> Unit
-                Intent.ACTION_SCREEN_OFF -> { setCaptureAllowed(false); tools.dismiss(); return }
+                Intent.ACTION_SCREEN_OFF -> { tools.dismiss(); return }
                 Intent.ACTION_CLOSE_SYSTEM_DIALOGS -> {
-                    // Home/recents keep the session's capture permission: revoking it rebuilds
-                    // every slot's output layer, which blanked the four cards on each Home press.
                     if (intent.getStringExtra("reason") in setOf("homekey", "recentapps")) tools.dismiss()
                     return
                 }
@@ -365,7 +357,6 @@ class NeXtepWindowController(
 
     fun suspendForLock() {
         runPendingDeactivate()
-        setCaptureAllowed(false)
         tools.dismiss()
         suspended = true
         publishPrivacy()
@@ -414,7 +405,6 @@ class NeXtepWindowController(
 
     fun show(): WorkspaceGeometry {
         runPendingDeactivate()
-        capturePolicy.reset()
         initializeIfNeeded()
         // system_server reads the wide display id from Settings; a session that ended without
         // clearing it (or a reboot) would otherwise hold every landscape request without pinning.
@@ -516,16 +506,11 @@ class NeXtepWindowController(
         backdropGeneration.incrementAndGet()
         // Keep the four live slots on screen while the panels fade; parking the tasks and
         // releasing their displays first blanked every slot a frame before the fade began.
-        // Revoking capture rebuilds the slots' output layers, so it waits for the fade too.
         runPendingDeactivate()
         pendingDeactivate = Runnable {
             pendingDeactivate = null
-            // Park (and capture each card's cover) before revoking capture: revoking replaces
-            // every card's output view, and parking would then read an unmeasured view.
-            // The next entry creates fresh output surfaces, which take the protection.
             runCatching { slotCoordinator?.deactivate() }
                 .onFailure { NeXtepLog.warn("workspace", "Deferred slot deactivation failed; displays retained", it) }
-            setCaptureAllowed(false)
         }.also { backdropHandler.postDelayed(it, WORKSPACE_EXIT_DURATION_MS) }
         setWideLayout(null, null)
         SystemServerWorkspaceBridge.clearScene(context)
@@ -764,7 +749,6 @@ class NeXtepWindowController(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_SECURE or
                 interactionFlags or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
@@ -1196,32 +1180,6 @@ class NeXtepWindowController(
         slotWindows.forEach { it.view.setAppearance(appearance) }
         contentHighlightView?.background = mainFrame(geometry())
         applyWallpaperBackdrop(geometry())
-    }
-
-    private fun setCaptureAllowed(allowed: Boolean) {
-        if (allowed && (!workspaceVisible || suspended)) return
-        // Lock and exit reset an already protected session; rebuilding every
-        // output layer again would blank the slots for nothing.
-        if (!allowed && !capturePolicy.captureAllowed) return
-        if (allowed) capturePolicy.allowForSession() else capturePolicy.reset()
-        runCatching { applyCaptureFlags(allowed) }.onFailure {
-            capturePolicy.reset()
-            runCatching { applyCaptureFlags(false) }
-            NeXtepLog.warn("workspace_privacy", "Capture mode update failed; restoring protection", it)
-        }
-    }
-
-    private fun applyCaptureFlags(allowed: Boolean) {
-        var failure: Throwable? = null
-        fun failed(error: Throwable) { if (failure == null) failure = error else failure?.addSuppressed(error) }
-        slotWindows.forEach { slot -> runCatching { slot.setCaptureAllowed(allowed) }.onFailure(::failed) }
-        records.forEach { record ->
-            val params = record.view.layoutParams as? WindowManager.LayoutParams ?: return@forEach
-            params.flags = if (allowed) params.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
-                else params.flags or WindowManager.LayoutParams.FLAG_SECURE
-            runCatching { windowManager.updateViewLayout(record.view, params) }.onFailure(::failed)
-        }
-        failure?.let { throw it }
     }
 
     private fun publishPrivacy() {

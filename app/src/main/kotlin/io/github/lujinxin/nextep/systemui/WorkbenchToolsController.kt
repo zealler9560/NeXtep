@@ -24,7 +24,6 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 internal class WorkbenchToolsController(
     private val context: Context,
     private val appearance: () -> WorkbenchAppearance,
-    private val captureAllowed: () -> Boolean,
     private val open: (Intent) -> Result<Unit>,
     private val search: (List<Intent>, (Result<Unit>) -> Unit) -> Result<Unit>,
     private val cancelSearch: () -> Unit,
@@ -447,7 +446,6 @@ internal class WorkbenchToolsController(
         return runCatching {
             value.window?.apply {
                 setType(checkNotNull(SystemUiWindowTypeResolver.resolve()))
-                if (!captureAllowed()) addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 // The frame follows the workbench panels (same tone, 28dp corners) in both appearances.
                 setBackgroundDrawable(android.graphics.drawable.InsetDrawable(
                     android.graphics.drawable.GradientDrawable().apply {

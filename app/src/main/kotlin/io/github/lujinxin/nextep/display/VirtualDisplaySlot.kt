@@ -39,7 +39,6 @@ class VirtualDisplaySlot(
     private var activeGeometry: SlotGeometry? = null
     private var layoutProfile: WorkspaceLayoutProfile? = null
     private var pendingLaunch: Intent? = null
-    private var freshSurfaceRequired = false
     private var surfaceGeneration = 1
     private var listener: Listener? = null
     private var creating = false
@@ -65,17 +64,6 @@ class VirtualDisplaySlot(
     }
 
     fun setInteractive(value: Boolean) { view.setContentInput(if (value) input else null) }
-
-    /** SurfaceView.setSecure only reaches a surface created after the call; rebuild the live one. */
-    fun setCaptureAllowed(allowed: Boolean) {
-        if (view.isCaptureAllowed() == allowed) return
-        view.setCaptureAllowed(allowed)
-        if (active && !suspended && virtualDisplay != null) {
-            surfaceGeneration += 1
-            view.refreshOutputSurface(this)
-            NeXtepLog.info("virtual_display", "Rebuilt output slot=$index generation=$surfaceGeneration capture=$allowed")
-        }
-    }
 
     init {
         view.textureView.holder.addCallback(this)
@@ -172,25 +160,10 @@ class VirtualDisplaySlot(
 
     fun activate() {
         active = true
-        // The output view survives a hidden workspace (its window stays parked); creating a new
-        // one cost the entry frame a surface each. Replace it only when its protection is stale.
-        val replace = freshSurfaceRequired && view.outputSecurityStale
-        freshSurfaceRequired = false
-        val textureView = if (replace) {
-            surfaceGeneration += 1
-            view.replaceTextureView(this).also {
-                NeXtepLog.info(
-                    "virtual_display",
-                    "Replaced secure output slot=$index generation=$surfaceGeneration",
-                )
-            }
-        } else {
-            view.textureView
-        }
         val reused = parked
         parked = false
         mainHandler.removeCallbacks(releaseParked)
-        updateDisplay(textureView.holder)
+        updateDisplay(view.textureView.holder)
         // A parked display is ready as soon as its output is bound again; no new display is created.
         if (reused) virtualDisplay?.display?.displayId?.let { displayId ->
             whenOutputBound { if (active && virtualDisplay?.display?.displayId == displayId) listener?.onDisplayReady(index, displayId) }
@@ -202,7 +175,6 @@ class VirtualDisplaySlot(
         active = false
         suspended = false
         pendingLaunch = null
-        freshSurfaceRequired = true
         val display = virtualDisplay
         if (display == null || creating) {
             releaseDisplay("workspace hidden")

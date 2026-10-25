@@ -173,7 +173,7 @@ class WorkbenchFlowUiTest {
 
     private fun tools(search: (List<Intent>, (Result<Unit>) -> Unit) -> Result<Unit>,
         cancel: () -> Unit = {}, open: (Intent) -> Result<Unit> = { Result.success(Unit) }) = WorkbenchToolsController(
-        context, { WorkbenchAppearance.DARK }, { false }, open, search, cancel,
+        context, { WorkbenchAppearance.DARK }, open, search, cancel,
     )
 
     @Test fun searchInputActuallySubmitsAllResolvedAppsAndWaitsForTaskPlacement() {

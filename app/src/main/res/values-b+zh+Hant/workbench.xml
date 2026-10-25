@@ -18,7 +18,6 @@
     <string name="workbench_shopping_apps">拼多多 · 抖音商城 · 京東 · 淘寶</string>
     <string name="workbench_compare_failed">請保留足夠的空側窗，並檢查已安裝的應用版本是否支援搜尋入口。</string>
     <string name="workbench_compare_missing">找不到支援這些搜尋入口的已安裝應用。</string>
-    <string name="workbench_capture">本次允許截圖／錄影</string>
     <string name="workbench_hide_recents">在最近任務中隱藏工作台應用</string>
     <string name="workbench_export">匯出診斷記錄</string>
     <string name="workbench_exported">診斷記錄已儲存至下載目錄。</string>
@@ -49,7 +48,6 @@
     <string name="control_top">頂部</string>
     <string name="control_bottom">底部</string>
     <string name="workbench_hide_recents_summary">僅工作台開啟期間生效，不會結束任務。</string>
-    <string name="workbench_capture_summary">退出或鎖屏後恢復保護，不會儲存。</string>
     <string name="workbench_export_summary">把本模組最近的事件中繼資料儲存到下載目錄。</string>
     <string name="workbench_export_action">匯出</string>
     <string name="workbench_exit_summary">所有應用回到普通視窗。</string>

@@ -120,13 +120,13 @@ Open Panes from its Home screen icon. One page, seven groups:
 | Scenes | View and delete scenes, pin them to the Home screen, restore deleted default scenes |
 | Layout | Follow system / light / dark, small panes left / right, controls top / bottom |
 | Opening the workspace | Quick Settings tile, bottom-corner gesture |
-| Privacy | Hide workspace apps from Recents, allow screenshots and recording this session |
+| Privacy | Hide workspace apps from Recents |
 | Troubleshooting | Export diagnostics, exit small-window mode |
 | About | Version, update check, credits |
 
 ## Privacy and limits
 
-- Screenshots and screen recording of the workspace are blocked by default. Settings can allow them for the current session; leaving the workspace, locking the phone or opening Settings blocks them again.
+- The workspace can be captured in screenshots and screen recordings.
 - With "Hide workspace tasks from Recents" on, workspace apps stay out of Recents until you leave the workspace.
 - Apps keep their own protection (payment codes, DRM video, enterprise policy); Panes does not lift it.
 - Exported diagnostics hold the module's last 2,000 actions and state changes (opening, closing, switching, apps moving between panes), with no search terms, links, accounts or screen content.

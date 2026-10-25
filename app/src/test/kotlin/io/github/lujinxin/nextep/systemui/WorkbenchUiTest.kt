@@ -145,11 +145,10 @@ class WorkbenchUiTest {
     }
 
 
-    @Test fun captureProtectionDoesNotRequirePermissionToCreateASecureDisplay() {
+    @Test fun slotDisplaysNeverRequireThePermissionForASecureDisplay() {
         val view = TaskSwitcherView(context, 3)
         assertEquals(SurfaceView::class.java, view.textureView.javaClass)
         assertTrue(view.clipToOutline)
-        assertNull(view.capturePreview())
         VirtualDisplayFlagsCompat.resolveCandidates().forEach {
             // SystemUI on the user's device lacks CAPTURE_SECURE_VIDEO_OUTPUT.
             // Every attempted configuration must work without that permission.

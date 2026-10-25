@@ -17,7 +17,6 @@
     <string name="workbench_shopping_apps">拼多多 · 抖音商城 · 京東 · 淘宝</string>
     <string name="workbench_compare_failed">空きウィンドウを確保し、アプリが検索リンクに対応しているか確認してください。</string>
     <string name="workbench_compare_missing">この検索に対応するインストール済みアプリがありません。</string>
-    <string name="workbench_capture">今回のみ画面キャプチャを許可</string>
     <string name="workbench_hide_recents">最近のタスクでワークスペースのアプリを非表示</string>
     <string name="workbench_export">診断ログを書き出す</string>
     <string name="workbench_exported">診断ログをダウンロードに保存しました。</string>
@@ -48,7 +47,6 @@
     <string name="control_top">上</string>
     <string name="control_bottom">下</string>
     <string name="workbench_hide_recents_summary">ワークスペース表示中のみ有効。タスクは終了しません。</string>
-    <string name="workbench_capture_summary">終了・ロックで保護に戻ります。保存されません。</string>
     <string name="workbench_export_summary">このモジュールの最近のイベント情報をダウンロードに保存します。</string>
     <string name="workbench_export_action">書き出す</string>
     <string name="workbench_exit_summary">すべてのアプリを通常のウィンドウに戻します。</string>

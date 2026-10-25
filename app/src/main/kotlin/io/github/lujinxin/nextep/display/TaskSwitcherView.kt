@@ -38,7 +38,6 @@ class TaskSwitcherView(
 
     var textureView: SurfaceView = createSurfaceView()
         private set
-    private var captureAllowed = false
     private var outputWidth = 0
     private var outputHeight = 0
     private var contentInput: SlotTouchForwarder? = null
@@ -230,31 +229,6 @@ class TaskSwitcherView(
         }
     }
 
-    fun replaceTextureView(listener: SurfaceHolder.Callback): SurfaceView {
-        backgroundSwipe.cancel()
-        waiting = true
-        outputSecurityStale = false
-        val previous = textureView
-        previous.animate().cancel()
-        previous.holder.removeCallback(listener)
-        removeView(previous)
-
-        return createSurfaceView().also { replacement ->
-            replacement.alpha = 0f
-            replacement.holder.addCallback(listener)
-            textureView = replacement
-            addView(
-                replacement,
-                0,
-                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
-            )
-        }
-    }
-
-    /** Rebuild the output layer in place and re-show the current state through it. */
-    fun refreshOutputSurface(listener: SurfaceHolder.Callback): SurfaceView =
-        replaceTextureView(listener).also { showState(currentState) }
-
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean = true
 
     fun setOutputSize(width: Int, height: Int) {
@@ -276,9 +250,7 @@ class TaskSwitcherView(
         coverView.measure(widthSpec, heightSpec)
     }
 
-    fun capturePreview(): Bitmap? = if (captureAllowed) captureProtectedPreview() else null
-
-    // Internal transitions use a secure overlay and immediately dispose the frame.
+    // Internal transitions dispose the frame immediately.
     // ScreenCapture still excludes any secure layers belonging to the source app.
     internal fun captureProtectedPreview(): Bitmap? = runCatching {
         val task = currentState as? SlotState.Occupied ?: return@runCatching null
@@ -443,19 +415,6 @@ class TaskSwitcherView(
 
     private var badgeHighlighted = false
 
-    fun setCaptureAllowed(allowed: Boolean) {
-        // setSecure reaches only surfaces created afterwards; the current one keeps its old flag.
-        if (captureAllowed != allowed) outputSecurityStale = true
-        captureAllowed = allowed
-        textureView.setSecure(!allowed)
-    }
-
-    /** True once the capture policy changed after the current output view was created. */
-    var outputSecurityStale = false
-        private set
-
-    fun isCaptureAllowed(): Boolean = captureAllowed
-
     internal fun setAppearance(value: WorkbenchAppearance) {
         appearance = value
         (background as? GradientDrawable)?.apply { setColor(value.slotCard); setStroke(dp(1), value.outline) }
@@ -464,12 +423,8 @@ class TaskSwitcherView(
 
     fun isShowingEmptyBadge(): Boolean = statusView.visibility == VISIBLE
 
-    private fun createSurfaceView(): SurfaceView = SurfaceView(context).apply {
-        // Protect this output layer from capture. Source apps' secure windows
-        // remain subject to Android's separate virtual-display restrictions.
-        setSecure(!captureAllowed)
-        setZOrderMediaOverlay(true)
-    }
+    // Source apps' secure windows remain subject to Android's virtual-display restrictions.
+    private fun createSurfaceView(): SurfaceView = SurfaceView(context).apply { setZOrderMediaOverlay(true) }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
