@@ -536,7 +536,7 @@ class NeXtepWindowController(
         cancelDragVisuals()
         suspended = false
         backdropGeneration.incrementAndGet()
-        // Keep the four live slots on screen while the panels fade; parking the tasks and
+        // Keep the live slots on screen while the panels fade; parking the tasks and
         // releasing their displays first blanked every slot a frame before the fade began.
         runPendingDeactivate()
         pendingDeactivate = Runnable {

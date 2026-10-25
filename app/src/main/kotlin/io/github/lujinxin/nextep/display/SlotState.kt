@@ -2,7 +2,7 @@ package io.github.lujinxin.nextep.display
 
 import android.content.ComponentName
 
-const val WORKSPACE_SLOT_COUNT = 4
+const val WORKSPACE_SLOT_COUNT = 5
 
 sealed interface SlotState {
     data object Empty : SlotState

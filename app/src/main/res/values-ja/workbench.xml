@@ -55,7 +55,7 @@
     <string name="favorite_apps_summary">%1$d 個選択中</string>
     <string name="workbench_compare_hint">同じ商品を複数のアプリで同時に検索し、それぞれ小ウィンドウで開きます。</string>
     <string name="section_scenes">シーン</string>
-    <string name="scenes_summary">メインと 4 つの小ウィンドウの組み合わせを保存し、ワンタップで復元します。</string>
+    <string name="scenes_summary">メインと 5 つの小ウィンドウの組み合わせを保存し、ワンタップで復元します。</string>
     <string name="scene_save_action">現在を保存</string>
     <string name="scene_name_hint">シーン名</string>
     <string name="scene_apply_action">復元</string>

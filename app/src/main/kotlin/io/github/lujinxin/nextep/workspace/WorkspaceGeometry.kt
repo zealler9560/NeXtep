@@ -168,15 +168,20 @@ data class WorkspaceGeometry(
             val gap = (WorkspaceControlMetrics.RAIL_GAP_DP * density).toInt().coerceAtLeast(1)
             val slotGap = (WorkspaceControlMetrics.SLOT_GAP_DP * density).toInt().coerceAtLeast(1)
             val count = io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT
-            // Solve main and all four preview rectangles together, including gaps.
+            // Solve main and all preview rectangles together, including gaps.
             // Their canvases share the recorded phone aspect ratio.
-            val controlThickness = ((longSide + count * gap * longSide.toDouble() / shortSide -
+            val solved = ((longSide + count * gap * longSide.toDouble() / shortSide -
                 (count - 1) * slotGap) / (count + 1)).roundToInt()
                 .coerceIn(1, (longSide / 2).coerceAtLeast(1))
-            val railWidth = proportionalRail(shortSide, longSide, controlThickness)
             // The gap comes out of the strip: the panes keep their solved size and move up.
             val bottomGap = gestureGap(!landscape, controlAtBottom, safeStatusInset, safeInsets.bottom, density)
-                .coerceAtMost(controlThickness - 1)
+                .coerceAtMost(solved - 1)
+            // A short phone may solve a strip too low for its controls; it keeps them whole, and the
+            // rail narrows with the main window so the cards sit a little apart instead.
+            val strip = if (landscape || safeStatusInset == 0) 0 else (density * (WorkspaceControlMetrics.HEADER_MIN_DP +
+                if (controlAtBottom) WorkspaceControlMetrics.STATUS_HEIGHT_DP else WorkspaceControlMetrics.STATUS_KEEP_DP)).toInt()
+            val controlThickness = maxOf(solved, strip + bottomGap).coerceAtMost((longSide / 2).coerceAtLeast(1))
+            val railWidth = proportionalRail(shortSide, longSide, controlThickness)
             return WorkspaceGeometry(
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,

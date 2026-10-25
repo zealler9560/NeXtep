@@ -273,7 +273,7 @@ class VirtualDisplaySlot(
             releaseDisplay("workspace hidden")
             return
         }
-        // Keep the display, off and without output, for a quick re-entry: creating four displays
+        // Keep the display, off and without output, for a quick re-entry: creating five displays
         // on entry stalled SystemUI's main thread on DisplayManager's lock during the slide-in.
         // The tasks already left it; a minute later it is released as before.
         mainHandler.removeCallbacks(outputBoundFallback)
@@ -439,7 +439,7 @@ class VirtualDisplaySlot(
         creating = true
         val token = ++creation
         // createVirtualDisplay is a ~100ms binder round trip per slot. Off the UI thread, the
-        // entry animation and the main task keep moving while the four displays appear.
+        // entry animation and the main task keep moving while the five displays appear.
         creator.execute {
             val result = factory.create(index, geometry, createdSurface)
             mainHandler.post {

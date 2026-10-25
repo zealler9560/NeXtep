@@ -54,7 +54,7 @@ class WorkbenchFlowUiTest {
         var added = 0
         val strip = TopAppStripView(context, {}, {}, { _, _ -> false }, { _, _ -> false },
             onSceneTapped = { tapped += it.name }, onSceneLongPressed = { tapped += "long:" + it.name }, onAddScene = { added++ })
-        val text = WorkbenchScene("上班模式", "com.a.mail", List(4) { null })
+        val text = WorkbenchScene("上班模式", "com.a.mail", List(5) { null })
         strip.setScenes(WorkbenchScene.builtins() + text, null)
         strip.setWorkspaceVisible(false)
         val density = context.resources.displayMetrics.density
@@ -68,7 +68,7 @@ class WorkbenchFlowUiTest {
             val buttons = (0 until bar.childCount).map(bar::getChildAt)
             buttons.zipWithNext().forEach { (a, b) -> assertTrue(a.right <= b.left) }
             assertTrue(bar.right <= row.width)
-            assertEquals((52 * density).toInt(), buttons[0].height)
+            assertEquals((48 * density).toInt(), buttons[0].height)
             assertEquals("上班", (buttons[2] as TextView).text.toString())
             val title = field(strip, "titleView") as TextView
             assertTrue(title.text.any(Char::isDigit))
@@ -82,7 +82,7 @@ class WorkbenchFlowUiTest {
         assertEquals(List(2) { listOf(WorkbenchScene.BUILTIN_COMPARE, WorkbenchScene.BUILTIN_PAYMENT, "上班模式", "long:上班模式") }.flatten(), tapped)
         assertEquals(2, added)
         // Six scenes fill the bar: the add button goes away.
-        strip.setScenes((1..6).map { WorkbenchScene("s$it", "com.s$it", List(4) { null }, icon = "work") }, "s2")
+        strip.setScenes((1..6).map { WorkbenchScene("s$it", "com.s$it", List(5) { null }, icon = "work") }, "s2")
         assertEquals(6, (field(strip, "sceneBar") as LinearLayout).childCount)
         assertNull(ShadowAlertDialog.getLatestAlertDialog())
         assertEquals(0, (field(strip, "appRow") as LinearLayout).childCount)
@@ -302,7 +302,7 @@ class WorkbenchFlowUiTest {
     @Test fun plusActuallyStartsHomeAndASecondTapCancelsTheTargetSlot() {
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         exported(home, "test.launcher")
-        val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+        val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
         val slot = slots.first()
         val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
             io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
@@ -327,7 +327,7 @@ class WorkbenchFlowUiTest {
 
     @Test fun plusStartsHomeEvenBeforeASurfaceExistsOrAfterDisplayCreationFailed() {
         exported(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), "test.launcher")
-        val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+        val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
         val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
             io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
             { WorkspaceGeometry.forDisplay(360, 800, density = 1f) })
@@ -347,7 +347,7 @@ class WorkbenchFlowUiTest {
     @Test fun searchWaitsForLateDisplaysThenStartsTheActualResolvedIntent() {
         val apps = WorkbenchIntents.searches(WorkbenchIntents.Search.DELIVERY, "milk")
         apps.forEach { exported(it.intent) }
-        val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+        val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
         val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
             io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
             { WorkspaceGeometry.forDisplay(360, 800, density = 1f) })
@@ -376,7 +376,7 @@ class WorkbenchFlowUiTest {
 
     @Test fun aReplacedDisplayCannotReceiveThePreviouslySelectedApp() {
         exported(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), "test.launcher")
-        val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+        val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
         val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
             io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
             { WorkspaceGeometry.forDisplay(360, 800, density = 1f) })
@@ -397,7 +397,7 @@ class WorkbenchFlowUiTest {
 
     @Test fun plusWithARestoreReservationStillOpensHomeWithoutDiscardingThatReservation() {
         exported(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), "test.launcher")
-        val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+        val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
         val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
             io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
             { WorkspaceGeometry.forDisplay(360, 800, density = 1f) })
@@ -414,7 +414,7 @@ class WorkbenchFlowUiTest {
 
     @Test fun selectingAnAppBeforeItsDisplayExistsQueuesAndCanBeCancelled() {
         exported(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), "test.launcher")
-        val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+        val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
         val slot = slots.first()
         val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
             io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
@@ -437,7 +437,7 @@ class WorkbenchFlowUiTest {
 
     @Test fun afterPreservingTheOldMainDesktopSelectionLaunchesTheNewAppOnDisplayZero() {
         exported(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), "test.launcher")
-        val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+        val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
         val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
             io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
             { WorkspaceGeometry.forDisplay(360, 800, density = 1f) })
@@ -463,7 +463,7 @@ class WorkbenchFlowUiTest {
     @Test fun desktopSelectionAndTileDropLaunchDirectlyOnTheRequestedDisplay() {
         exported(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), "test.launcher")
         for (fromDesktop in listOf(true, false)) {
-            val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+            val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
             val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
                 io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
                 { WorkspaceGeometry.forDisplay(360, 800, density = 1f) })
@@ -496,7 +496,7 @@ class WorkbenchFlowUiTest {
     }
 
     @Test fun sideSearchUsesOriginalDisplayLaunchAndPreservesSearchPayload() {
-        val slots = List(4) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
+        val slots = List(5) { io.github.lujinxin.nextep.display.VirtualDisplaySlot(context, it) }
         val coordinator = io.github.lujinxin.nextep.display.SlotTaskCoordinator(context, slots,
             io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator(context),
             { WorkspaceGeometry.forDisplay(360, 800, density = 1f) })
