@@ -105,7 +105,7 @@ The workspace follows the system's light and dark mode, or stays light or dark. 
 
 ## Open and close
 
-- **Bottom-corner gesture:** one finger from the bottom-left corner towards the upper right, or from the bottom-right corner towards the upper left, opens the workspace; the same swipe inside the workspace closes it. Start within 96 dp of the bottom and side edges and move at least 24 dp inward and upward; a straight swipe up (system home) or a horizontal swipe (system back) does not trigger it.
+- **Bottom-corner gesture:** one finger from the bottom-left corner towards the upper right, or from the bottom-right corner towards the upper left, opens the workspace; the same swipe inside the workspace closes it. Start within 64 dp of the bottom and side edges and move at least 24 dp inward and upward along a roughly 45° diagonal; a swipe up, straight or slightly slanted (system home), or a horizontal swipe (system back) does not trigger it.
 - **Quick Settings tile:** add it from Settings → Opening the workspace → Quick Settings shortcut, then toggle "Panes" in Quick Settings.
 - **Settings:** Troubleshooting → Exit small-window mode.
 - **Shell commands** for automation tools (root): see [docs/WORKBENCH.md](docs/WORKBENCH.md).

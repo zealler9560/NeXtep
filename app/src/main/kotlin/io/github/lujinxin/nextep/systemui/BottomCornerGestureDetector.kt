@@ -7,9 +7,11 @@ class BottomCornerGestureDetector(
     enum class Result { IGNORED, OBSERVING, ABANDONED, CONFIRMED }
 
     // A thumb swipe from the corner is short and rarely a clean 45°: accept 24dp on each axis
-    // within a 96dp corner. The system home swipe is near-vertical and the back swipe near-
-    // horizontal, so both still fail the 2.5:1 diagonal check below.
-    private val startSize = 96f * density
+    // within a 64dp corner, between about 32° and 58° (1.6:1). A 96dp corner with 2.5:1 also
+    // took a home swipe leaning 25° off vertical (realme GT8): the workspace closed while the
+    // system's home gesture carried on.
+    private val startSize = 64f * density
+    private val maximumSlope = 1.6f
     private val minimumDistance = 24f * density
     private val directionSlop = 12f * density
     private var observing = false
@@ -68,7 +70,7 @@ class BottomCornerGestureDetector(
                 return finish(Result.ABANDONED)
             }
             if (inward >= minimumDistance && upward >= minimumDistance &&
-                inward <= upward * 2.5f && upward <= inward * 2.5f
+                inward <= upward * maximumSlope && upward <= inward * maximumSlope
             ) return finish(if (canActivate()) Result.CONFIRMED else Result.ABANDONED)
             if (maxOf(inward, upward) >= minimumDistance &&
                 minOf(inward, upward) < maxOf(inward, upward) / 4f

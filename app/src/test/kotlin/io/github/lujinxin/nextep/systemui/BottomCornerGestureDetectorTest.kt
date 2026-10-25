@@ -59,11 +59,11 @@ class BottomCornerGestureDetectorTest {
 
     @Test fun cornerStartBoundaryIsInclusiveAndCannotBeEnteredMidSwipe() {
         val t = Trace()
-        assertEquals(OBSERVING, t.event(0, 96f, 804f))
-        assertEquals(CONFIRMED, t.event(2, 128f, 772f))
-        assertEquals(IGNORED, t.event(0, 97f, 804f))
+        assertEquals(OBSERVING, t.event(0, 64f, 836f))
+        assertEquals(CONFIRMED, t.event(2, 96f, 804f))
+        assertEquals(IGNORED, t.event(0, 65f, 836f))
         assertEquals(IGNORED, t.event(2, 50f, 850f))
-        assertEquals(IGNORED, t.event(0, 20f, 803f))
+        assertEquals(IGNORED, t.event(0, 20f, 835f))
     }
 
     @Test fun straightHorizontalAndHomeSwipesAreAbandoned() {
@@ -86,7 +86,7 @@ class BottomCornerGestureDetectorTest {
     }
 
     @Test fun diagonalSlopeLimitsAreAcceptedButFlatPathsAreNot() {
-        for ((dx, dy) in listOf(24f to 60f, 60f to 24f)) {
+        for ((dx, dy) in listOf(24f to 38f, 38f to 24f)) {
             val t = Trace()
             t.event(0, 20f, 880f)
             assertEquals(CONFIRMED, t.event(2, 20f + dx, 880f - dy))
@@ -94,6 +94,15 @@ class BottomCornerGestureDetectorTest {
         val t = Trace()
         t.event(0, 20f, 880f)
         assertEquals(ABANDONED, t.event(1, 100f, 850f))
+    }
+
+    @Test fun aHomeSwipeLeaningOffVerticalFromTheCornerNeverCloses() {
+        // About 25° off vertical: the 2.5:1 limit took it for the workspace gesture.
+        val t = Trace()
+        t.event(0, 20f, 880f)
+        assertEquals(OBSERVING, t.event(2, 48f, 820f, 150L))
+        assertEquals(OBSERVING, t.event(2, 60f, 790f, 200L))
+        assertEquals(ABANDONED, t.event(1, 70f, 760f, 250L))
     }
 
     @Test fun secondPointerCancelsAndLiftingItDoesNotRearm() {
