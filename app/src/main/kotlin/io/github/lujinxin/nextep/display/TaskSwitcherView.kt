@@ -167,8 +167,8 @@ class TaskSwitcherView(
         val previousState = currentState
         currentState = state
         when (state) {
-            SlotState.Empty -> showReady(animated = previousState is SlotState.Occupied)
-            is SlotState.Ready -> showReady(animated = previousState is SlotState.Occupied)
+            SlotState.Empty -> showReady()
+            is SlotState.Ready -> showReady()
             is SlotState.Occupied -> {
                 // Under a cover the fade is invisible, yet every frame of it sent a SurfaceView
                 // alpha transaction while the apps were coming back; show the output at once.
@@ -177,7 +177,7 @@ class TaskSwitcherView(
                         previousState !is SlotState.Occupied || previousState.taskId != state.taskId),
                 )
             }
-            is SlotState.Failed -> showReady(animated = previousState is SlotState.Occupied)
+            is SlotState.Failed -> showReady()
         }
         if (coverView.visibility == VISIBLE && !coverHeld) {
             removeCallbacks(clearCover)
@@ -464,22 +464,13 @@ class TaskSwitcherView(
 
     private fun SlotState.inDragTargetStates(): Boolean = this is SlotState.Ready || this is SlotState.Occupied
 
-    private fun showReady(highlighted: Boolean = false, animated: Boolean = false) {
+    private fun showReady(highlighted: Boolean = false) {
+        // No fade-out of the departed app: on ColorOS 16 each step of it showed the layer again, and the
+        // app's last frame lingered in the emptied pane. Moves that empty a pane animate a card over it.
         textureView.animate().cancel()
-        if (animated) {
-            textureView.animate()
-                .alpha(0f)
-                .scaleX(CONTENT_EXIT_SCALE)
-                .scaleY(CONTENT_EXIT_SCALE)
-                .setDuration(TRANSITION_OUT_DURATION_MS)
-                .setInterpolator(transitionInterpolator)
-                .start()
-        } else {
-            textureView.alpha = 0f
-            textureView.scaleX = 1f
-            textureView.scaleY = 1f
-        }
-        // Not after the fade: where the layer ignores the view's alpha, the old frame flashed meanwhile.
+        textureView.alpha = 0f
+        textureView.scaleX = 1f
+        textureView.scaleY = 1f
         hideOutputIfEmpty()
         badgeHighlighted = highlighted
         statusView.background = appearance.emptyBadge(resources.displayMetrics.density, highlighted)

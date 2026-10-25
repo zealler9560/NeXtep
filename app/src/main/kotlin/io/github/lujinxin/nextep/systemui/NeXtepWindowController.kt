@@ -1066,8 +1066,9 @@ class NeXtepWindowController(
             android.graphics.RectF(point.x - halfWidth, point.y - halfHeight,
                 point.x + halfWidth, point.y + halfHeight)
         val sourcePreview = sourceView.captureProtectedPreview()
-        val targetOccupied = targetIndex == null ||
-            slotCoordinator?.slotStates()?.getOrNull(targetIndex) is SlotState.Occupied
+        // The desktop in the main window does not move into the pane: the card flying back is an empty one.
+        val targetOccupied = if (targetIndex == null) mainTaskPresenter.currentTaskId() != null
+            else slotCoordinator?.slotStates()?.getOrNull(targetIndex) is SlotState.Occupied
         val targetPreview = if (targetIndex != null) {
             if (targetOccupied) slotWindows[targetIndex].view.captureProtectedPreview() else null
         } else mainTaskPresenter.currentTaskId()?.let { mainPanePreview(it, geometry) }
