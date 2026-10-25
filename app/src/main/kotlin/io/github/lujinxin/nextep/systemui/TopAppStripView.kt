@@ -447,12 +447,12 @@ class TopAppStripView(
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             isClickable = true
             isLongClickable = true
-            setPadding(dp(5), 0, dp(5), dp(WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP))
+            setPadding(0, 0, 0, dp(WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP))
             addView(
                 icon,
                 LinearLayout.LayoutParams(dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP), dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP)),
             )
-            layoutParams = LinearLayout.LayoutParams(dp(APP_TILE_WIDTH_DP), LayoutParams.MATCH_PARENT)
+            layoutParams = LinearLayout.LayoutParams(dp(APP_TILE_WIDTH_DP * rowScale), LayoutParams.MATCH_PARENT)
             setOnClickListener { onAppClicked(Intent(entry.launchIntent)) }
             setOnLongClickListener { tile ->
                 val started = onAppDragStarting(tile, Intent(entry.launchIntent))
@@ -521,6 +521,17 @@ class TopAppStripView(
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Float): Int = (value * resources.displayMetrics.density).toInt()
+
+    /**
+     * A larger display size leaves fewer dp across the screen (ColorOS 16 test phone: 363 dp), and the
+     * fixed row then looked sparse next to the reference phone. Narrower screens shrink the row with
+     * the screen width; wider ones keep it. The 44 dp icon box, and so the control height, stays.
+     */
+    private val rowScale: Float
+        get() = with(resources.displayMetrics) {
+            (minOf(widthPixels, heightPixels) / density / REFERENCE_WIDTH_DP).coerceIn(0.75f, 1f)
+        }
 
     /**
      * Each entry re-records the strip (its window is released on exit), and an adaptive or
@@ -537,7 +548,7 @@ class TopAppStripView(
         icon.draw(android.graphics.Canvas(bitmap))
         visibleGlyphBounds(bitmap)?.let { glyph ->
             // Draw again, scaled about the glyph's centre, rather than resample the first pass.
-            val scale = dp(APP_GLYPH_SIZE_DP).toFloat() / maxOf(glyph.width(), glyph.height())
+            val scale = dp(APP_GLYPH_SIZE_DP * rowScale).toFloat() / maxOf(glyph.width(), glyph.height())
             val left = box / 2f - glyph.exactCenterX() * scale
             val top = box / 2f - glyph.exactCenterY() * scale
             bitmap.eraseColor(Color.TRANSPARENT)
@@ -551,6 +562,8 @@ class TopAppStripView(
     private companion object {
         const val APP_TILE_WIDTH_DP = 60
         const val APP_GLYPH_SIZE_DP = 38
+        // The Find X9s Pro the row was tuned on: 1216 px, about 410 dp across.
+        const val REFERENCE_WIDTH_DP = 410f
         const val SCENE_BUTTON_SIZE_DP = 36
         const val SCENE_BUTTON_GAP_DP = 6
         const val REFRESH_INTERVAL_MS = 15_000L
