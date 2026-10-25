@@ -106,6 +106,10 @@ class WorkbenchUiTest {
                 val fill = (background.getDrawable(0) as android.graphics.drawable.GradientDrawable).color!!.defaultColor
                 // The scene the workspace shows (the third button) is tinted; the rest share the empty slot's card tone.
                 if (index == 2) assertNotEquals(theme.slotCard, fill) else assertEquals(theme.slotCard, fill)
+                // The glyph keeps 20dp inside the 36dp card: the inset background must not replace the padding.
+                val padding = (14 * context.resources.displayMetrics.density).toInt()
+                assertEquals("button $index", listOf(padding, padding, padding, padding),
+                    listOf(button.paddingLeft, button.paddingTop, button.paddingRight, button.paddingBottom))
             }
         }
         val bar = field(view, "sceneBar") as android.widget.LinearLayout

@@ -358,8 +358,9 @@ class TopAppStripView(
             setTextColor(appearance.accent)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setAutoSizeTextTypeUniformWithConfiguration(8, 13, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
-            setPadding(dp(3 + SCENE_BUTTON_INSET_DP), 0, dp(3 + SCENE_BUTTON_INSET_DP), 0)
+            // Before the padding: an inset background replaces the view's padding with its insets.
             background = buttonBackground(selected)
+            setPadding(dp(3 + SCENE_BUTTON_INSET_DP), 0, dp(3 + SCENE_BUTTON_INSET_DP), 0)
         }
         return view.apply {
             contentDescription = sceneLabel(scene)
@@ -378,9 +379,10 @@ class TopAppStripView(
     private fun iconButton(icon: WorkbenchIcon, selected: Boolean) = android.widget.ImageButton(context).apply {
         setImageDrawable(icon)
         scaleType = ImageView.ScaleType.FIT_CENTER
-        dp(8 + SCENE_BUTTON_INSET_DP).let { setPadding(it, it, it, it) }
         isFocusable = true
+        // Before the padding: an inset background replaces the view's padding with its insets.
         background = buttonBackground(selected)
+        dp(8 + SCENE_BUTTON_INSET_DP).let { setPadding(it, it, it, it) }
     }
 
     /** Buttons share the empty-slot card tone; the current scene carries an accent ring.
