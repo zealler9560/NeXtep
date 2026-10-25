@@ -823,6 +823,7 @@ class SlotTaskCoordinator(
     }
 
     private var autoMinimize: Runnable? = null
+    private var replacedMain: Int? = null
 
     /**
      * An app opened from outside the workspace (a notification, the control centre, a link) took the
@@ -2322,9 +2323,15 @@ class SlotTaskCoordinator(
         // Reuse this pass's snapshot. A fullscreen promotion restores layout, so that path
         // needs a fresh query before the presenter reads windowing mode/bounds.
         val presentationTasks = if (promotedSlot >= 0) taskRepository.runningTasks() else tasks
-        val previousMain = mainTaskPresenter.currentTaskId()
+        // A cold-starting app cannot be presented until its window exists; the main app it replaces is
+        // remembered over those failed passes (the presenter has let go of it already).
+        val previousMain = mainTaskPresenter.currentTaskId() ?: replacedMain
         mainTaskPresenter.reconcileForeground(geometryProvider(), presentationTasks)
-            .onSuccess { scheduleAutoMinimize(previousMain, foreground) }
+            .onSuccess {
+                replacedMain = null
+                scheduleAutoMinimize(previousMain, foreground)
+            }
+            .onFailure { replacedMain = previousMain }
             .onFailure { error ->
                 NeXtepLog.warn(
                     "main_task_presenter",
