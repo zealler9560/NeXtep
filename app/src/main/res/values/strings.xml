@@ -67,6 +67,7 @@
     <string name="update_source">View source code</string>
     <string name="browser_unavailable">No browser available. Install or enable a browser first.</string>
     <string name="browser_open_failed">Unable to open the download link. Try again later.</string>
+    <string name="diagnostics_file_name">Panes_log_%1$s.txt</string>
     <string name="app_clone">Clone</string>
     <string name="app_clone_number">Clone %1$d</string>
     <string name="app_clone_label">%1$s (%2$s)</string>

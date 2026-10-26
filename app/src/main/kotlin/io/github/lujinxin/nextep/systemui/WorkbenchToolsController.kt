@@ -452,7 +452,8 @@ internal class WorkbenchToolsController(
 
     private fun writeDiagnostics(launcher: String?): Boolean {
         // No logcat scraping: export only this module's bounded event metadata.
-        val name = "NeXtep-diagnostics-${System.currentTimeMillis()}.txt"
+        val name = string(R.string.diagnostics_file_name,
+            java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date()))
         var created: android.net.Uri? = null
         return runCatching {
             val resolver = context.contentResolver
