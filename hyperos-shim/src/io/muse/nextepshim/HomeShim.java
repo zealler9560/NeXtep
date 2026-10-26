@@ -29,6 +29,7 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class HomeShim implements IXposedHookLoadPackage {
+    static final String ACTION_TOGGLE = "io.muse.nextepshim.action.TOGGLE_WORKSPACE";
     private static final String TAG = "NeXtepHomeShim: ";
     private static final int RESULT_HANDLED = 0x4E58;
     private static boolean registered = false;
@@ -102,6 +103,7 @@ public class HomeShim implements IXposedHookLoadPackage {
             filter.addAction(ns[0] + ".action.SET_WORKSPACE");
             filter.addAction(ns[0] + ".action.SYSTEMUI_SET_WORKSPACE");
         }
+        filter.addAction(ACTION_TOGGLE);
         ctx.registerReceiver(new HomeResponder(), filter, Context.RECEIVER_EXPORTED);
         XposedBridge.log(TAG + "responder registered in com.miui.home");
     }
@@ -161,6 +163,12 @@ public class HomeShim implements IXposedHookLoadPackage {
         try {
             ContentResolver resolver = ctx.getContentResolver();
             wsActive = Settings.Global.getInt(resolver, KEY_ACTIVE, 0) == 1;
+            // Keep the protocol-visible state following the published state
+            // between coordinator interactions (heals process restarts).
+            // During a SET, the handler overwrites this with the requested
+            // value and replies synchronously, before any observer callback
+            // can interleave on the main thread.
+            active = wsActive;
             String geo = Settings.Global.getString(resolver, KEY_GEOMETRY);
             if (geo != null) {
                 String[] parts = geo.split(",");
@@ -254,13 +262,27 @@ public class HomeShim implements IXposedHookLoadPackage {
     }
 
     private static class HomeResponder extends BroadcastReceiver {
-        private static Boolean lastRelayed = null;
-        private static int droppedEchoes = 0;
-        private static long lastEchoLogMs = 0;
+        private static Boolean lastNotedSystemUiSet = null;
 
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
+            if (ACTION_TOGGLE.equals(action)) {
+                // From ToggleActivity (gesture apps). The broker receiver is
+                // guarded by STATUS_BAR_SERVICE, which a plain app process
+                // does not hold; this home process does, so relay from here.
+                try {
+                    Intent toggle = new Intent(
+                        "io.github.yishisanren.panes.action.HOST_TOGGLE_REQUEST");
+                    toggle.setComponent(new ComponentName("io.github.yishisanren.panes",
+                        "io.github.lujinxin.nextep.trigger.WorkspaceControlBrokerReceiver"));
+                    context.sendBroadcast(toggle);
+                    XposedBridge.log(TAG + "toggle relayed (gesture)");
+                } catch (Throwable t) {
+                    XposedBridge.log(TAG + "toggle relay failed " + t);
+                }
+                return;
+            }
             String[] ns = nsFor(action);
             if (ns == null) return;
             String prefix = ns[0];
@@ -274,32 +296,17 @@ public class HomeShim implements IXposedHookLoadPackage {
                     reply(prefix, protocol);
                     XposedBridge.log(TAG + "SET applied active=" + active + " proto=" + protocol);
                 } else if (action.endsWith(".action.SYSTEMUI_SET_WORKSPACE")) {
-                    boolean requested = intent.getBooleanExtra(prefix + ".extra.REQUESTED_ACTIVE", active);
-                    // Echo guard (v2.7): the broker re-notifies SYSTEMUI_SET
-                    // after applying every HOST_SET_REQUEST. Relaying that
-                    // echo again closes a self-sustaining broadcast loop
-                    // (~100 Hz; observed 2026-10-26: 3,738 relays in ~2 min,
-                    // launcher jittering). In the original design the
-                    // launcher consumes SYSTEMUI_SET terminally; a genuine
-                    // new request always flips the value vs. the last one
-                    // relayed, so same-value repeats are echoes: drop them.
-                    if (lastRelayed != null && lastRelayed == requested) {
-                        droppedEchoes++;
-                        long now = SystemClock.uptimeMillis();
-                        if (now - lastEchoLogMs >= 5000) {
-                            lastEchoLogMs = now;
-                            XposedBridge.log(TAG + "SYSTEMUI_SET echo dropped active="
-                                + requested + " total=" + droppedEchoes);
-                        }
-                        return;
+                    // Terminal consumption, as in the original LauncherRuntime:
+                    // this broadcast is a notification that SystemUI already
+                    // applied the state. Record it only. (v2.10: the former
+                    // HOST_SET relay is removed; it amplified disagreements
+                    // between the coordinator and the lagging published state
+                    // into a self-sustaining on/off oscillation.)
+                    boolean noted = intent.getBooleanExtra(prefix + ".extra.REQUESTED_ACTIVE", active);
+                    if (noted != lastNotedSystemUiSet) {
+                        lastNotedSystemUiSet = noted;
+                        XposedBridge.log(TAG + "SYSTEMUI_SET noted active=" + noted);
                     }
-                    lastRelayed = requested;
-                    Intent relay = new Intent(prefix + ".action.HOST_SET_REQUEST");
-                    relay.setComponent(new ComponentName(ns[2],
-                        "io.github.lujinxin.nextep.trigger.WorkspaceControlBrokerReceiver"));
-                    relay.putExtra(prefix + ".extra.REQUESTED_ACTIVE", requested);
-                    context.sendBroadcast(relay);
-                    XposedBridge.log(TAG + "SYSTEMUI_SET relayed active=" + requested);
                 }
             } catch (Throwable t) {
                 XposedBridge.log(TAG + "onReceive failed " + t);
@@ -308,7 +315,7 @@ public class HomeShim implements IXposedHookLoadPackage {
 
         private void reply(String prefix, int protocol) {
             Bundle extras = new Bundle();
-            extras.putBoolean(prefix + ".extra.WORKSPACE_ACTIVE", wsActive);
+            extras.putBoolean(prefix + ".extra.WORKSPACE_ACTIVE", active);
             extras.putString(prefix + ".extra.HOME_PACKAGE", "com.miui.home");
             extras.putInt(prefix + ".extra.RUNTIME_PROTOCOL_VERSION", protocol);
             setResultCode(RESULT_HANDLED);
