@@ -57,9 +57,9 @@ class LauncherAppRepository(private val context: Context) {
                     runCatching {
                         val info = activity.activityInfo
                         val userId = info.applicationInfo.uid / PER_USER_RANGE
-                        if (userId == currentUserId || !info.exported || !info.enabled ||
-                            info.packageName == "com.android.stk"
-                        ) return@profileActivity
+                        if (userId == currentUserId || !info.exported || info.packageName == "com.android.stk") {
+                            return@profileActivity
+                        }
                         val isClone = userId in clones
                         val component = activity.componentName
                         val label = displayLabel(activity.label.toString(), userId, isClone,
@@ -112,9 +112,9 @@ class LauncherAppRepository(private val context: Context) {
     private fun entry(info: ResolveInfo, manager: PackageManager, userId: Int,
         isClone: Boolean, alias: String?, cloneLabel: String? = null): AppEntry? = runCatching {
         val activity = info.activityInfo ?: return@runCatching null
-        if (!activity.exported || !activity.enabled || activity.packageName == "com.android.stk") {
-            return@runCatching null
-        }
+        // ActivityInfo.enabled is the manifest value: an icon-switching alias (MT Manager) is
+        // disabled there and enabled at runtime, and the query already skips disabled components.
+        if (!activity.exported || activity.packageName == "com.android.stk") return@runCatching null
         val component = ComponentName(activity.packageName, activity.name)
         val icon = userBadgedIcon(activity.loadUnbadgedIcon(manager), manager, userId)
         AppEntry(appKey(component, userId), component, userId,
