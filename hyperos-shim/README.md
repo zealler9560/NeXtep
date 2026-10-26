@@ -29,8 +29,13 @@ runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS �
    - `SET_WORKSPACE` → 记录状态并同样应答；
    - `SYSTEMUI_SET_WORKSPACE` → 中继为 `HOST_SET_REQUEST` 发给模块的
      `WorkspaceControlBrokerReceiver`。
-   协议本身不要求签名权限（`sendOrderedBroadcast(intent, null, ...)`），
-   进程内应答即可满足契约。
+   `QUERY / SET` 的接收器要求发送方持有模块的签名权限
+   `<包名>.permission.CONTROL_WORKSPACE`（与 NeXtep 自己的桌面接收器一致），
+   `SYSTEMUI_SET` 来自 SystemUI，不设权限。应答的协议号回显发送方在
+   `RUNTIME_PROTOCOL_VERSION` 附加字段里给出的值（2.6.6 起随查询下发），
+   表里的数字只给更老的本体兜底。`android` 作用域的输入法贴合只在
+   MIUI / HyperOS（`ro.miui.ui.version.*` 或 `ro.mi.os.version.name` 非空）上安装，
+   避免在 ColorOS 上与本体的输入法钩子叠加。
 2. **桌面变换（主窗口显示）**：NeXtep 的 SystemUI 侧会把工作台几何发布到
    `Settings.Global`（`nextep_workspace_active_v1`、
    `nextep_workspace_geometry_v1`，CSV 字段顺序：
