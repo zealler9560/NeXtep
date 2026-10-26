@@ -314,7 +314,10 @@ class NeXtepWindowController(
             true
         }
         TriggerBroadcastContract.COMMAND_PAUSE_APP -> value?.let { setAppPaused(it, "settings") } ?: false
-        TriggerBroadcastContract.COMMAND_EXPORT_DIAGNOSTICS -> tools.exportDiagnostics()
+        TriggerBroadcastContract.COMMAND_EXPORT_DIAGNOSTICS -> {
+            slotCoordinator?.logSnapshot()
+            tools.exportDiagnostics()
+        }
         TriggerBroadcastContract.COMMAND_SCENE_SAVE, TriggerBroadcastContract.COMMAND_SCENE_APPLY,
         TriggerBroadcastContract.COMMAND_SCENE_DELETE, TriggerBroadcastContract.COMMAND_SCENE_RESTORE_DEFAULTS ->
             value?.trim()?.takeIf { it.isNotEmpty() }?.let { sceneCommand(key, it) } ?: false

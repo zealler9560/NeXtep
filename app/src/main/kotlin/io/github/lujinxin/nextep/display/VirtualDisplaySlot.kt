@@ -71,8 +71,8 @@ class VirtualDisplaySlot(
     private var pausedAt = 0L
     /**
      * A screen wake lock on the pane's own display group, held while an output is connected. The
-     * display sits in its own group, which has its own screen timeout: on HyperOS an untouched pane
-     * went to sleep after it (no frames, probe ERROR_SOURCE_NO_DATA) until a tap on it woke it again.
+     * display sits in its own group with its own screen timeout. On HyperOS a display reused after
+     * leaving the workbench came back off (state 1) with the lock held, so acquiring it also wakes the group.
      */
     private var wake: android.os.PowerManager.WakeLock? = null
 
@@ -85,7 +85,8 @@ class VirtualDisplaySlot(
             val power = checkNotNull(applicationContext.getSystemService(android.os.PowerManager::class.java))
             // Hidden overload: a wake lock without a display id only keeps the phone's own group awake.
             val lock = power.javaClass.getMethod("newWakeLock", Int::class.javaPrimitiveType, String::class.java, Int::class.javaPrimitiveType)
-                .invoke(power, android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "NeXtep:slot$index", displayId) as android.os.PowerManager.WakeLock
+                .invoke(power, android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "NeXtep:slot$index", displayId) as android.os.PowerManager.WakeLock
             lock.setReferenceCounted(false)
             lock.acquire()
             lock
@@ -150,6 +151,10 @@ class VirtualDisplaySlot(
 
     /** A parked display (hidden workspace) is not offered: to callers the slot has no display. */
     fun displayId(): Int? = if (parked) null else virtualDisplay?.display?.displayId
+
+    /** This pane's app, display and output for the diagnostics export; [taskId] is the occupant the coordinator expects. */
+    fun describe(taskId: Int?): String = SlotDiagnostics.describe(applicationContext, index, virtualDisplay?.display, taskId,
+        view.textureView, "active=$active parked=$parked suspended=$suspended paused=$paused awake=${wake?.isHeld}")
 
     fun geometry(): SlotGeometry? = activeGeometry
 

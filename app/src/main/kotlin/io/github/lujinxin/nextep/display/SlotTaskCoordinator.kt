@@ -434,11 +434,22 @@ class SlotTaskCoordinator(
             return
         }
         outputCheckAttempts[index] = attempt
+        val taskId = (slotRecords[index].state as? SlotState.Occupied)?.taskId
         slots[index].ensureOutputShowing { rebound ->
-            if (!rebound) return@ensureOutputShowing
-            NeXtepLog.info("slot_output", "Blank output slot=$index rebound attempt=$attempt")
+            // A pane that shows its app is described too, to set against the black ones.
+            if (!rebound) {
+                if (attempt == 1) NeXtepLog.info("slot_output", "Output ok ${slots[index].describe(taskId)}")
+                return@ensureOutputShowing
+            }
+            NeXtepLog.info("slot_output", "Blank output slot=$index rebound attempt=$attempt ${slots[index].describe(taskId)}")
             handler.postDelayed(outputChecks[index], OUTPUT_CHECK_DELAY_MS * attempt)
         }
+    }
+
+    /** Every pane as it is now, for the diagnostics export: a black pane is usually on screen when it is taken. */
+    fun logSnapshot() = slots.indices.forEach { index ->
+        val state = slotRecords[index].state
+        NeXtepLog.info("slot_snapshot", "${state.javaClass.simpleName} ${slots[index].describe((state as? SlotState.Occupied)?.taskId)}")
     }
 
     private val pauseChecks = slots.indices.map { index -> Runnable { evaluatePause(index) } }
