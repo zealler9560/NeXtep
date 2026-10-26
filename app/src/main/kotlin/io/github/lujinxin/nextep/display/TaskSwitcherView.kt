@@ -180,12 +180,14 @@ class TaskSwitcherView(
         }
         if (coverView.visibility == VISIBLE && !coverHeld) {
             removeCallbacks(clearCover)
-            when (state) {
+            when {
                 // shortcut: no first-frame signal from a SurfaceView; the rebound app has drawn
                 // within this delay on the test phone. Replace with a frame callback if it shows black.
-                is SlotState.Occupied -> postDelayed(clearCover, COVER_REVEAL_DELAY_MS)
+                state is SlotState.Occupied -> postDelayed(clearCover, COVER_REVEAL_DELAY_MS)
+                // The occupant left for the main window: its paused picture must not stay on the empty card.
+                state is SlotState.Ready && previousState is SlotState.Occupied -> clearCover(fade = true)
                 // The display is up; the retained task is on its way back, or never comes.
-                is SlotState.Ready -> postDelayed(clearCover, COVER_FALLBACK_MS)
+                state is SlotState.Ready -> postDelayed(clearCover, COVER_FALLBACK_MS)
                 else -> clearCover(fade = false)
             }
         }

@@ -69,4 +69,17 @@ class SlotPauseTest {
         assertFalse(view.isCoverHeld())
         assertEquals(View.GONE, coverView.visibility)
     }
+
+    /** Promoting a paused pane: the card empties with the swap, not 2.5 s later (seen on PME110). */
+    @Test fun aReleasedCoverLeavesWithTheOccupant() {
+        val activity = org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+        val view = TaskSwitcherView(activity, 0).also(activity::setContentView)
+        view.showState(SlotState.Occupied(7, 42, ComponentName("com.example", "com.example.Main")))
+        view.holdCover(Bitmap.createBitmap(30, 60, Bitmap.Config.ARGB_8888))
+        view.releaseCover()
+        view.showState(SlotState.Ready(7))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(300))
+        val coverView = (0 until view.childCount).map(view::getChildAt).filterIsInstance<android.widget.ImageView>().single()
+        assertEquals(View.GONE, coverView.visibility)
+    }
 }
