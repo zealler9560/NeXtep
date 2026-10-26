@@ -69,6 +69,28 @@ class VirtualDisplaySlot(
 
     private var paused = false
     private var pausedAt = 0L
+    /**
+     * A screen wake lock on the pane's own display group, held while an output is connected. The
+     * display sits in its own group, which has its own screen timeout: on HyperOS an untouched pane
+     * went to sleep after it (no frames, probe ERROR_SOURCE_NO_DATA) until a tap on it woke it again.
+     */
+    private var wake: android.os.PowerManager.WakeLock? = null
+
+    private fun keepAwake(on: Boolean) {
+        wake?.let { held -> runCatching { if (held.isHeld) held.release() } }
+        wake = null
+        if (!on) return
+        val displayId = virtualDisplay?.display?.displayId ?: return
+        wake = runCatching {
+            val power = checkNotNull(applicationContext.getSystemService(android.os.PowerManager::class.java))
+            // Hidden overload: a wake lock without a display id only keeps the phone's own group awake.
+            val lock = power.javaClass.getMethod("newWakeLock", Int::class.javaPrimitiveType, String::class.java, Int::class.javaPrimitiveType)
+                .invoke(power, android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "NeXtep:slot$index", displayId) as android.os.PowerManager.WakeLock
+            lock.setReferenceCounted(false)
+            lock.acquire()
+            lock
+        }.onFailure { NeXtepLog.warn("virtual_display", "Display wake lock failed slot=$index displayId=$displayId", it) }.getOrNull()
+    }
 
     fun isPaused(): Boolean = paused
 
@@ -90,6 +112,7 @@ class VirtualDisplaySlot(
         }
         releasePlaceholder()
         surface = null
+        keepAwake(false)
         paused = true
         pausedAt = android.os.SystemClock.uptimeMillis()
         NeXtepLog.info("slot_pause", "Paused slot=$index displayId=${display.display.displayId} " +
@@ -108,6 +131,7 @@ class VirtualDisplaySlot(
                 surface = output
                 boundWidth = view.textureView.holder.surfaceFrame.width()
                 boundHeight = view.textureView.holder.surfaceFrame.height()
+                keepAwake(true)
             }.onFailure { NeXtepLog.warn("slot_pause", "Output reconnect failed slot=$index", it) }
         }
         view.releaseCover()
@@ -174,6 +198,7 @@ class VirtualDisplaySlot(
             android.view.PixelCopy.request(output, probe, { result ->
                 probe.recycle()
                 if (result == android.view.PixelCopy.ERROR_SOURCE_NO_DATA) {
+                    NeXtepLog.info("slot_output", "No frame slot=$index displayState=${virtualDisplay?.display?.state} awake=${wake?.isHeld}")
                     rebindOutput()
                     mainHandler.postDelayed({ done(true) }, OUTPUT_REBIND_SETTLE_MS)
                 } else done(false)
@@ -258,7 +283,12 @@ class VirtualDisplaySlot(
         updateDisplay(view.textureView.holder)
         // A parked display is ready as soon as its output is bound again; no new display is created.
         if (reused) virtualDisplay?.display?.displayId?.let { displayId ->
-            whenOutputBound { if (active && virtualDisplay?.display?.displayId == displayId) listener?.onDisplayReady(index, displayId) }
+            whenOutputBound {
+                if (active && virtualDisplay?.display?.displayId == displayId) {
+                    keepAwake(true)
+                    listener?.onDisplayReady(index, displayId)
+                }
+            }
         }
     }
 
@@ -283,6 +313,7 @@ class VirtualDisplaySlot(
         runCatching { display.setSurface(null) }
         releasePlaceholder()
         surface = null
+        keepAwake(false)
         parked = true
         view.showWaiting()
         mainHandler.postDelayed(releaseParked, PARKED_DISPLAY_RELEASE_MS)
@@ -309,6 +340,7 @@ class VirtualDisplaySlot(
                 NeXtepLog.warn("virtual_display", "Unable to suspend output slot=$index", it)
             }
             releasePlaceholder()
+            keepAwake(false)
             return
         }
         if (!suspended) return
@@ -318,6 +350,7 @@ class VirtualDisplaySlot(
             surface = currentSurface
             check(currentSurface.isValid) { "Slot $index output Surface is invalid" }
             display.setSurface(currentSurface)
+            keepAwake(true)
         }
         suspended = false
         updateDisplay(view.textureView.holder)
@@ -459,6 +492,7 @@ class VirtualDisplaySlot(
                     boundWidth = view.textureView.holder.surfaceFrame.width()
                     boundHeight = view.textureView.holder.surfaceFrame.height()
                     virtualDisplay = display
+                    keepAwake(true)
                     statusInsets.sync(display.display, layoutProfile?.statusBarHeight ?: 0)
                     listener?.onDisplayReady(index, display.display.displayId)
                     NeXtepLog.info(
@@ -503,6 +537,7 @@ class VirtualDisplaySlot(
         view.releaseCover()
         runCatching { virtualDisplay?.setSurface(null) }
         releasePlaceholder()
+        keepAwake(false)
         statusInsets.detach()
         virtualDisplay?.release()
         virtualDisplay = null
