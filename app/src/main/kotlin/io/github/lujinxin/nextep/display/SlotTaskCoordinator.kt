@@ -417,6 +417,30 @@ class SlotTaskCoordinator(
         slots[index].dropStaleFrame()
     }
 
+    private val outputChecks = slots.indices.map { index -> Runnable { checkOutput(index) } }
+    private val outputCheckAttempts = IntArray(slots.size)
+
+    /**
+     * A pane whose app runs but whose output layer never received a frame: on HyperOS two of four
+     * panes stayed black this way (probe ERROR_SOURCE_NO_DATA while the app drew at 30 fps). The
+     * reconnect that fixed the same symptom after window moves on ColorOS is tried here as well.
+     */
+    private fun checkOutput(index: Int) {
+        if (!active || suspended || slotRecords[index].state !is SlotState.Occupied) return
+        val attempt = outputCheckAttempts[index] + 1
+        if (attempt > OUTPUT_CHECK_ATTEMPTS) return
+        if (transitionInProgress || slots[index].isPaused()) {
+            handler.postDelayed(outputChecks[index], OUTPUT_CHECK_DELAY_MS)
+            return
+        }
+        outputCheckAttempts[index] = attempt
+        slots[index].ensureOutputShowing { rebound ->
+            if (!rebound) return@ensureOutputShowing
+            NeXtepLog.info("slot_output", "Blank output slot=$index rebound attempt=$attempt")
+            handler.postDelayed(outputChecks[index], OUTPUT_CHECK_DELAY_MS * attempt)
+        }
+    }
+
     private val pauseChecks = slots.indices.map { index -> Runnable { evaluatePause(index) } }
     /** The last reason each pane stayed live, so a lasting reason is logged once. */
     private val pauseBlockers = arrayOfNulls<String>(slots.size)
@@ -2634,6 +2658,11 @@ class SlotTaskCoordinator(
             handler.removeCallbacks(staleFrameChecks[index])
             handler.postDelayed(staleFrameChecks[index], STALE_FRAME_DELAY_MS)
         }
+        if (occupant != null && occupant != (previous as? SlotState.Occupied)?.taskId) {
+            outputCheckAttempts[index] = 0
+            handler.removeCallbacks(outputChecks[index])
+            handler.postDelayed(outputChecks[index], OUTPUT_CHECK_DELAY_MS)
+        }
         if (pauseRules != null && occupant != (previous as? SlotState.Occupied)?.taskId) {
             slots[index].resume("pane changed")
             pauseBlockers[index] = null
@@ -2667,6 +2696,9 @@ class SlotTaskCoordinator(
         /** A check that met an exchange or launch looks again this soon after. */
         const val PAUSE_BUSY_RETRY_MS = 500L
         const val STALE_FRAME_DELAY_MS = 400L
+        /** A new occupant has this long to draw its first frame before a blank output is reconnected. */
+        const val OUTPUT_CHECK_DELAY_MS = 1_500L
+        const val OUTPUT_CHECK_ATTEMPTS = 3
         const val SETTLE_DELAY_MS = 700L
         /** The rail's entry animation is 240 ms; retained tasks come back once it has settled. */
         const val REBIND_AFTER_ENTRY_MS = 320L

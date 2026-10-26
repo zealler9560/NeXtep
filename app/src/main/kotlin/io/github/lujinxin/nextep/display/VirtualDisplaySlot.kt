@@ -166,21 +166,21 @@ class VirtualDisplaySlot(
      * display is connected again first. A reconnect drops the last frame, so a paused or loading
      * app would show black until it draws again; a layer that already has a picture is left alone.
      */
-    fun ensureOutputShowing(done: () -> Unit) {
+    fun ensureOutputShowing(done: (rebound: Boolean) -> Unit) {
         val output = view.textureView
-        if (virtualDisplay == null || !active || suspended || paused || !output.holder.surface.isValid) return done()
+        if (virtualDisplay == null || !active || suspended || paused || !output.holder.surface.isValid) return done(false)
         val probe = android.graphics.Bitmap.createBitmap(16, 9, android.graphics.Bitmap.Config.ARGB_8888)
         runCatching {
             android.view.PixelCopy.request(output, probe, { result ->
                 probe.recycle()
                 if (result == android.view.PixelCopy.ERROR_SOURCE_NO_DATA) {
                     rebindOutput()
-                    mainHandler.postDelayed(done, OUTPUT_REBIND_SETTLE_MS)
-                } else done()
+                    mainHandler.postDelayed({ done(true) }, OUTPUT_REBIND_SETTLE_MS)
+                } else done(false)
             }, mainHandler)
         }.onFailure {
             probe.recycle()
-            done()
+            done(false)
         }
     }
 
