@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.LocaleList
 import androidx.annotation.StringRes
+import io.github.lujinxin.nextep.logging.NeXtepLog
 import java.util.Locale
 
 /** Uses Android's persisted app language; host resources are never changed. */
@@ -54,19 +55,34 @@ object AppLanguage {
     fun string(context: Context, @StringRes resource: Int, vararg arguments: Any): String {
         if (context.packageName == MODULE_PACKAGE) return context.getString(resource, *arguments)
         return synchronized(this) {
-            // Load the module APK rather than interpreting its IDs in SystemUI/Launcher.
-            val base = moduleContext ?: context.createPackageContext(MODULE_PACKAGE, 0).also {
-                moduleContext = it
+            runCatching { moduleString(context, resource, arguments) }.getOrElse {
+                // The module APK was updated under the running host: the cached package context has
+                // lost its resources (SystemUI crashed on the next dark-mode switch). Reload from the
+                // installed APK once; a label is not worth taking SystemUI down for.
+                moduleContext = null
+                localizedContext = null
+                cachedConfiguration = null
+                runCatching { moduleString(context, resource, arguments) }.getOrElse { error ->
+                    NeXtepLog.warn("app_language", "Module string unavailable resource=$resource", error)
+                    ""
+                }
             }
-            val configuration = Configuration(context.resources.configuration).apply {
-                setLocale(locale(context))
-            }
-            if (localizedContext == null || cachedConfiguration != configuration) {
-                localizedContext = base.createConfigurationContext(configuration)
-                cachedConfiguration = configuration
-            }
-            checkNotNull(localizedContext).getString(resource, *arguments)
         }
+    }
+
+    private fun moduleString(context: Context, resource: Int, arguments: Array<out Any>): String {
+        // Load the module APK rather than interpreting its IDs in SystemUI/Launcher.
+        val base = moduleContext ?: context.createPackageContext(MODULE_PACKAGE, 0).also {
+            moduleContext = it
+        }
+        val configuration = Configuration(context.resources.configuration).apply {
+            setLocale(locale(context))
+        }
+        if (localizedContext == null || cachedConfiguration != configuration) {
+            localizedContext = base.createConfigurationContext(configuration)
+            cachedConfiguration = configuration
+        }
+        return checkNotNull(localizedContext).getString(resource, *arguments)
     }
 
     private fun supportedTag(locale: Locale): String? = when (locale.language) {
