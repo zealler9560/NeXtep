@@ -146,9 +146,6 @@ object TriggerBroadcastContract {
 
     private const val HOME_PACKAGE_TTL_MS = 60_000L
 
-    // The expected protocol rides along, so a companion responder (hyperos-shim) echoes the
-    // version this build wants instead of a number baked in at its own build time.
     private fun targetIntent(action: String, targetPackage: String): Intent =
         Intent(action).setPackage(targetPackage)
-            .putExtra(EXTRA_RUNTIME_PROTOCOL_VERSION, RUNTIME_PROTOCOL_VERSION)
 }
