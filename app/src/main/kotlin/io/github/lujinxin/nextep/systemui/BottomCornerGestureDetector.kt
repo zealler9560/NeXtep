@@ -7,11 +7,13 @@ class BottomCornerGestureDetector(
     enum class Result { IGNORED, OBSERVING, ABANDONED, CONFIRMED }
 
     // A thumb swipe from the corner is short and rarely a clean 45°: accept 24dp on each axis
-    // within a 64dp corner, between about 32° and 58° (1.6:1). A 96dp corner with 2.5:1 also
-    // took a home swipe leaning 25° off vertical (realme GT8): the workspace closed while the
-    // system's home gesture carried on.
+    // within a 64dp corner, between about 20° and 62° from horizontal. Flatter swipes conflict
+    // with nothing the system owns at the corner, so that side is wide (2.75:1); a 96dp corner
+    // with 2.5:1 on the steep side took a home swipe leaning 25° off vertical (realme GT8), so
+    // that side stops at 1.88:1.
     private val startSize = 64f * density
-    private val maximumSlope = 1.6f
+    private val maximumFlatSlope = 2.75f
+    private val maximumSteepSlope = 1.88f
     private val minimumDistance = 24f * density
     private val directionSlop = 12f * density
     private var observing = false
@@ -75,7 +77,7 @@ class BottomCornerGestureDetector(
                 return finish(Result.ABANDONED)
             }
             if (inward >= minimumDistance && upward >= minimumDistance &&
-                inward <= upward * maximumSlope && upward <= inward * maximumSlope
+                inward <= upward * maximumFlatSlope && upward <= inward * maximumSteepSlope
             ) {
                 // In dp from the corner, for diagnostics: where the swipe began and how it moved.
                 lastConfirmed = "corner=${if (fromLeft) "left" else "right"} " +
@@ -83,8 +85,10 @@ class BottomCornerGestureDetector(
                     "move=${dp(inward)},${dp(upward)} ms=${eventTime - downTime}"
                 return finish(if (canActivate()) Result.CONFIRMED else Result.ABANDONED)
             }
+            // A path that starts flat and lifts later (a thumb rolling off the corner) stays
+            // observed; only a near-straight edge or home swipe is given up early.
             if (maxOf(inward, upward) >= minimumDistance &&
-                minOf(inward, upward) < maxOf(inward, upward) / 4f
+                minOf(inward, upward) < maxOf(inward, upward) / 6f
             ) return finish(Result.ABANDONED)
         }
         return if (action == ACTION_MOVE) Result.OBSERVING else finish(Result.ABANDONED)
