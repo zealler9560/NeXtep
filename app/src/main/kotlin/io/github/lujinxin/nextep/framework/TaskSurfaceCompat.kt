@@ -248,29 +248,33 @@ object TaskSurfaceCompat {
     fun capturePreview(taskId: Int, sourceCrop: android.graphics.Rect? = null,
                        scale: Float = 0.5f): android.graphics.Bitmap? = runCatching {
         val leash = findTaskLeash(taskId, requireMainDisplay = false) ?: return@runCatching null
-        val surfaceType = Class.forName("android.view.SurfaceControl")
-        val captureType = Class.forName("android.window.ScreenCaptureInternal")
-        val builderType = Class.forName("android.window.ScreenCaptureInternal\$LayerCaptureArgs\$Builder")
-        val builder = builderType.getConstructor(surfaceType).newInstance(leash)
         // A task leash has no bounds of its own; without a crop SurfaceFlinger rejects the
         // capture ("Boundless layer", EINVAL). The task's bounds on its display are the crop.
         val crop = sourceCrop ?: observedStates[taskId]?.bounds?.takeIf { !it.isEmpty }
             ?: findLiveTaskState(taskId)?.bounds?.takeIf { !it.isEmpty }
-        if (crop != null) {
-            builderType.getMethod("setSourceCrop", android.graphics.Rect::class.java)
-                .invoke(builder, android.graphics.Rect(0, 0, crop.width(), crop.height()))
-        }
+        captureLayers(leash, crop?.let { android.graphics.Rect(0, 0, it.width(), it.height()) }, scale)
+    }.onFailure { NeXtepLog.warn("task_preview", "Task preview unavailable taskId=$taskId", it) }.getOrNull()
+
+    /** A task's own layer wherever it is shown; a pane whose display composes nothing mirrors it. */
+    fun taskLeash(taskId: Int): SurfaceControl? = findTaskLeash(taskId, requireMainDisplay = false) as? SurfaceControl
+
+    /** [surface]'s children at [scale]; a layer without bounds of its own needs [crop]. Throws when unavailable. */
+    fun captureLayers(surface: Any, crop: android.graphics.Rect?, scale: Float): android.graphics.Bitmap? {
+        val surfaceType = Class.forName("android.view.SurfaceControl")
+        val captureType = Class.forName("android.window.ScreenCaptureInternal")
+        val builderType = Class.forName("android.window.ScreenCaptureInternal\$LayerCaptureArgs\$Builder")
+        val builder = builderType.getConstructor(surfaceType).newInstance(surface)
+        if (crop != null) builderType.getMethod("setSourceCrop", android.graphics.Rect::class.java).invoke(builder, crop)
         builderType.getMethod("setFrameScale", Float::class.javaPrimitiveType).invoke(builder, scale)
         builderType.getMethod("setChildrenOnly", Boolean::class.javaPrimitiveType).invoke(builder, true)
         val args = builderType.getMethod("build").invoke(builder)
         val buffer = captureType.methods.firstOrNull {
             it.name == "captureLayers" && it.parameterCount == 1 && it.parameterTypes[0].isInstance(args)
-        }?.invoke(null, args) ?: return@runCatching null
-        val bitmap = buffer.javaClass.getMethod("asBitmap").invoke(buffer) as? android.graphics.Bitmap
-            ?: return@runCatching null
-        try { bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
+        }?.invoke(null, args) ?: return null
+        val bitmap = buffer.javaClass.getMethod("asBitmap").invoke(buffer) as? android.graphics.Bitmap ?: return null
+        return try { bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
         finally { bitmap.recycle() }
-    }.onFailure { NeXtepLog.warn("task_preview", "Task preview unavailable taskId=$taskId", it) }.getOrNull()
+    }
 
     /** Whether the task shows a frame laid out for its current bounds; null when it cannot be captured. */
     fun showsLaidOutFrame(taskId: Int, crop: android.graphics.Rect? = null): Boolean? =

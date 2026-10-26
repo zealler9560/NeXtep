@@ -7,6 +7,7 @@ import android.hardware.display.VirtualDisplay
 import android.view.Surface
 import android.view.SurfaceHolder
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.framework.UserTargetedActivityLauncher
 import io.github.lujinxin.nextep.workspace.WorkspaceLayoutProfile
 
@@ -20,6 +21,8 @@ class VirtualDisplaySlot(
         const val OUTPUT_REBIND_SETTLE_MS = 40L
         const val PARKED_DISPLAY_RELEASE_MS = 60_000L
         const val STALE_FRAME_SPREAD = 24
+        /** Above the output's own buffer layer inside the SurfaceView's container. */
+        const val MIRROR_LAYER = 1_000
         val creator: java.util.concurrent.ExecutorService =
             java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "NeXtep-VirtualDisplay") }
     }
@@ -114,6 +117,7 @@ class VirtualDisplaySlot(
         releasePlaceholder()
         surface = null
         keepAwake(false)
+        detachMirror()
         paused = true
         pausedAt = android.os.SystemClock.uptimeMillis()
         NeXtepLog.info("slot_pause", "Paused slot=$index displayId=${display.display.displayId} " +
@@ -136,6 +140,7 @@ class VirtualDisplaySlot(
             }.onFailure { NeXtepLog.warn("slot_pause", "Output reconnect failed slot=$index", it) }
         }
         view.releaseCover()
+        if (mirroredTask != null) attachMirror()
         NeXtepLog.info("slot_pause", "Resumed slot=$index reason=$reason " +
             "pausedMs=${android.os.SystemClock.uptimeMillis() - pausedAt} displayState=${display?.display?.state}")
         if (surface != null) runOutputBound()
@@ -154,7 +159,73 @@ class VirtualDisplaySlot(
 
     /** This pane's app, display and output for the diagnostics export; [taskId] is the occupant the coordinator expects. */
     fun describe(taskId: Int?): String = SlotDiagnostics.describe(applicationContext, index, virtualDisplay?.display, taskId,
-        view.textureView, "active=$active parked=$parked suspended=$suspended paused=$paused awake=${wake?.isHeld}")
+        view.textureView, "active=$active parked=$parked suspended=$suspended paused=$paused awake=${wake?.isHeld} " +
+            "mirror=${mirroredTask?.let { "$it:${mirror?.isValid == true}" }}")
+
+    /** Task whose layers the pane shows over its output, and the copy that shows them. */
+    private var mirroredTask: Int? = null
+    private var mirror: android.view.SurfaceControl? = null
+
+    fun mirrorsTask(taskId: Int): Boolean = mirroredTask == taskId && mirror?.isValid == true
+
+    /**
+     * Shows [taskId]'s own layers in the pane, over the output. On HyperOS a pane display often
+     * composes no frame at all: the app drew, WM showed it on that display, the display was on, and
+     * the output still never received a buffer, on three of four displays. A mirror of the task's
+     * layer is composed with the pane itself and needs nothing from the display.
+     */
+    fun mirrorTask(taskId: Int): Boolean {
+        mirroredTask = taskId
+        return attachMirror()
+    }
+
+    fun clearMirror() {
+        mirroredTask = null
+        detachMirror()
+    }
+
+    private fun attachMirror(): Boolean {
+        val taskId = mirroredTask ?: return false
+        detachMirror()
+        if (paused) return false
+        val output = view.textureView
+        val parent = output.surfaceControl?.takeIf { it.isValid } ?: return false
+        val geometry = activeGeometry ?: return false
+        if (output.width <= 0 || output.height <= 0) return false
+        val leash = TaskSurfaceCompat.taskLeash(taskId)?.takeIf { it.isValid } ?: return false
+        return runCatching {
+            val copy = android.view.SurfaceControl::class.java
+                .getMethod("mirrorSurface", android.view.SurfaceControl::class.java)
+                .invoke(null, leash) as android.view.SurfaceControl
+            // The output shows the display scaled to the view; the mirror takes the same scale.
+            val scaleX = output.width / geometry.width.toFloat()
+            val scaleY = output.height / geometry.height.toFloat()
+            android.view.SurfaceControl.Transaction().reparent(copy, parent).setLayer(copy, MIRROR_LAYER)
+                .setPosition(copy, 0f, 0f).setScale(copy, scaleX, scaleY).setVisibility(copy, true).apply()
+            mirror = copy
+            NeXtepLog.info("slot_mirror", "Mirrored slot=$index taskId=$taskId scale=$scaleX,$scaleY")
+            true
+        }.onFailure { NeXtepLog.warn("slot_mirror", "Mirror failed slot=$index taskId=$taskId", it) }.getOrDefault(false)
+    }
+
+    private fun detachMirror() {
+        val copy = mirror ?: return
+        mirror = null
+        runCatching {
+            android.view.SurfaceControl.Transaction().reparent(copy, null).apply()
+            copy.release()
+        }
+    }
+
+    /** What the pane's output layer shows now, mirror included, for the log. */
+    fun captureShown(): String {
+        val output = view.textureView
+        val layer = output.surfaceControl?.takeIf { it.isValid } ?: return "no layer"
+        return runCatching {
+            TaskSurfaceCompat.captureLayers(layer, android.graphics.Rect(0, 0, output.width, output.height), 0.25f)
+                ?.let(SlotDiagnostics::summarize) ?: "none"
+        }.getOrElse { "capture failed $it" }
+    }
 
     fun geometry(): SlotGeometry? = activeGeometry
 
@@ -298,6 +369,7 @@ class VirtualDisplaySlot(
     }
 
     fun deactivate() {
+        clearMirror()
         input.cancel()
         active = false
         suspended = false
@@ -391,12 +463,14 @@ class VirtualDisplaySlot(
         // at the bound size is the first callback after creation and must not reconnect the
         // display's queue a second time (that dropped the queued frames: NO_BUFFER_AVAILABLE).
         updateDisplay(holder, rebind = width != boundWidth || height != boundHeight)
+        if (mirroredTask != null) mainHandler.post { if (mirroredTask != null) attachMirror() }
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         // A lock, rotation or temporary reparent may replace the output layer.
         // Keep its tasks alive on the same display until the new layer arrives.
         NeXtepLog.info("virtual_display", "Surface destroyed slot=$index display=${displayId()}")
+        detachMirror()
         val display = virtualDisplay
         // Without an output the display turns off; turned off and on again within a frame or two
         // (the wide pane's move into the top bar), the system once kept its tasks hidden. A
@@ -543,6 +617,7 @@ class VirtualDisplaySlot(
         runCatching { virtualDisplay?.setSurface(null) }
         releasePlaceholder()
         keepAwake(false)
+        clearMirror()
         statusInsets.detach()
         virtualDisplay?.release()
         virtualDisplay = null

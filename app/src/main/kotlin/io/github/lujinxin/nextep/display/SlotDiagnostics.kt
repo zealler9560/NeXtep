@@ -52,14 +52,25 @@ internal object SlotDiagnostics {
 
     /** The task's own layers, captured apart from the pane: content here and none in the output is a display problem. */
     private fun layer(taskId: Int): String {
-        val bitmap = TaskSurfaceCompat.capturePreview(taskId, scale = 0.05f) ?: return "none"
+        return TaskSurfaceCompat.capturePreview(taskId, scale = 0.05f)?.let(::summarize) ?: "none"
+    }
+
+    /** Whether the task's own layers hold any drawn pixel; null when they cannot be captured. */
+    fun taskDrew(taskId: Int): Boolean? {
+        val bitmap = TaskSurfaceCompat.capturePreview(taskId, scale = 0.05f) ?: return null
         return try {
             val pixels = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
-            val luma = pixels.map { (android.graphics.Color.red(it) * 3 + android.graphics.Color.green(it) * 6 + android.graphics.Color.blue(it)) / 10 }
-            val alpha = pixels.maxOf { android.graphics.Color.alpha(it) }
-            "${bitmap.width}x${bitmap.height} mean=${luma.average().toInt()} spread=${luma.max() - luma.min()} alpha=$alpha"
+            pixels.any { android.graphics.Color.alpha(it) > 0 }
         } finally { bitmap.recycle() }
     }
+
+    /** Size, mean and spread of luminance, and peak alpha; recycles [bitmap]. */
+    fun summarize(bitmap: android.graphics.Bitmap): String = try {
+        val pixels = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
+        val luma = pixels.map { (android.graphics.Color.red(it) * 3 + android.graphics.Color.green(it) * 6 + android.graphics.Color.blue(it)) / 10 }
+        val alpha = pixels.maxOfOrNull { android.graphics.Color.alpha(it) } ?: 0
+        "${bitmap.width}x${bitmap.height} mean=${luma.average().toInt()} spread=${(luma.maxOrNull() ?: 0) - (luma.minOrNull() ?: 0)} alpha=$alpha"
+    } finally { bitmap.recycle() }
 
     private fun interactive(context: Context, displayId: Int): Any? = runCatching {
         val power = context.getSystemService(PowerManager::class.java)
