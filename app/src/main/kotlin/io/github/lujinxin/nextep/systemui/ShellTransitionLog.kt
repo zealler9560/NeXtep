@@ -26,8 +26,28 @@ internal object ShellTransitionLog {
                 }
             })
         }
+        installKeyguardGoingAway(module, loader)
         NeXtepLog.info("shell_transition", "Installed transition log methods=${methods.size}")
     }
+
+    /** The keyguard-going-away request reaches Shell at unlock time, before WM collects the transition. */
+    private fun installKeyguardGoingAway(module: XposedModule, loader: ClassLoader) {
+        val method = loader.loadClass("com.android.wm.shell.transition.Transitions").declaredMethods
+            .firstOrNull { it.name == "requestStartTransition" && it.parameterTypes.any { type -> type.name == TRANSITION_REQUEST } }
+            ?: return NeXtepLog.warn("shell_transition", "No Transitions.requestStartTransition; unlock resumes on keyguard hidden")
+        method.isAccessible = true
+        module.hook(method).intercept(object : XposedInterface.Hooker {
+            override fun intercept(chain: XposedInterface.Chain): Any? {
+                runCatching {
+                    val request = chain.args.firstOrNull { it?.javaClass?.name == TRANSITION_REQUEST } ?: return@runCatching
+                    if (isKeyguardGoingAway(call(request, "getFlags") as? Int ?: 0)) SystemUiRuntime.onKeyguardGoingAway()
+                }
+                return chain.proceed()
+            }
+        })
+    }
+
+    fun isKeyguardGoingAway(flags: Int): Boolean = flags and TRANSIT_FLAG_KEYGUARD_GOING_AWAY != 0
 
     private fun log(info: Any?, handler: Any?) {
         info ?: return
@@ -43,4 +63,7 @@ internal object ShellTransitionLog {
     private fun call(target: Any, name: String): Any? = runCatching { target.javaClass.getMethod(name).invoke(target) }.getOrNull()
 
     private const val TRANSITION_INFO = "android.window.TransitionInfo"
+    private const val TRANSITION_REQUEST = "android.window.TransitionRequestInfo"
+    /** WindowManager.TRANSIT_FLAG_KEYGUARD_GOING_AWAY (hidden). */
+    private const val TRANSIT_FLAG_KEYGUARD_GOING_AWAY = 1 shl 8
 }

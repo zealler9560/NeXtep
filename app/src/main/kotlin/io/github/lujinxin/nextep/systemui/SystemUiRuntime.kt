@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Display
 import io.github.lujinxin.nextep.apps.LauncherAppCatalogContract
@@ -82,7 +83,7 @@ object SystemUiRuntime {
     private val lockStateObserver = object : Runnable {
         override fun run() {
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return
-            if (!isScreenReady() || isKeyguardLocked(applicationContext)) {
+            if (!isScreenReady() || keyguardLocked()) {
                 if (!workspaceController.isSuspended()) {
                     workspaceController.suspendForLock()
                     publishWorkspaceSurfaceState(false)
@@ -109,12 +110,29 @@ object SystemUiRuntime {
         override fun run() {
             if (!::workspaceController.isInitialized || !workspaceController.isSuspended()) return
             if (!isScreenReady()) return
-            if (!isKeyguardLocked(applicationContext) && workspaceController.resumeAfterLock()) {
+            if (!keyguardLocked() && workspaceController.resumeAfterLock()) {
                 publishWorkspaceSurfaceState(true)
                 return
             }
             lifecycleHandler.postDelayed(this, 500L)
         }
+    }
+
+    /** Until when the keyguard, still reported locked, is on its way out. */
+    @Volatile private var keyguardGoingAwayUntil = 0L
+
+    private fun keyguardLocked(): Boolean =
+        isKeyguardLocked(applicationContext) && SystemClock.uptimeMillis() > keyguardGoingAwayUntil
+
+    /**
+     * WM Shell received the keyguard-going-away transition request. Waking the workspace now, under
+     * the lock screen that is about to fade, lets the retained panes draw before WM's transition
+     * waits on them (ColorOS rapid unlock otherwise times out after 1 s) and has the desktop already
+     * transformed when the keyguard lifts, instead of jumping into shape afterwards.
+     */
+    fun onKeyguardGoingAway() {
+        keyguardGoingAwayUntil = SystemClock.uptimeMillis() + KEYGUARD_GOING_AWAY_GRACE_MS
+        lifecycleHandler.post(resumeAfterUnlock)
     }
 
     fun initialize(context: Context) {
@@ -450,4 +468,6 @@ object SystemUiRuntime {
                 ?.getDisplay(Display.DEFAULT_DISPLAY)?.state == Display.STATE_ON
 
     private const val PANEL_COLLAPSE_DELAY_MS = 380L
+    /** A cancelled unlock re-shows the keyguard within this; the observer then suspends again. */
+    private const val KEYGUARD_GOING_AWAY_GRACE_MS = 2_000L
 }
