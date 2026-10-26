@@ -43,13 +43,19 @@ public class HomeShim implements IXposedHookLoadPackage {
     private static final String KEY_GEOMETRY = "nextep_workspace_geometry_v1";
     private static WeakReference<View> decorRef = new WeakReference<>(null);
     private static boolean wsActive = false;
-    private static int gScreenW = 0, gTopH = 0, gSidebarW = 0;
-    private static String gSide = "RIGHT";
+    private static boolean hasGeo = false;
+    private static int pSW = 0, pSH = 0, pTopH = 0, pSB = 0, pNavL = 0, pNavT = 0, pNavR = 0, pNavB = 0, pSI = 0, pMCH = 0, pBG = 0;
+    private static boolean pCab = false;
+    private static String pSide = "RIGHT";
     private static ValueAnimator runningAnim;
     private static volatile float curScale = 1f, curTx = 0f, curTy = 0f;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
+        if ("android".equals(lpparam.packageName)) {
+            ImeFit.install(lpparam.classLoader);
+            return;
+        }
         if (!"com.miui.home".equals(lpparam.packageName)) return;
         if (!"com.miui.home".equals(lpparam.processName)) return;
         XposedHelpers.findAndHookMethod(Application.class, "onCreate", new XC_MethodHook() {
@@ -130,6 +136,22 @@ public class HomeShim implements IXposedHookLoadPackage {
         };
         resolver.registerContentObserver(Settings.Global.getUriFor(KEY_ACTIVE), false, observer);
         resolver.registerContentObserver(Settings.Global.getUriFor(KEY_GEOMETRY), false, observer);
+        // Relay the system-side IME fit state: system-process LSPosed logs
+        // proved lossy in exports, this process's log stream is reliable.
+        ContentObserver imeRelay = new ContentObserver(new Handler(Looper.getMainLooper())) {
+            private String last = "";
+            @Override public void onChange(boolean selfChange, Uri uri) {
+                try {
+                    String v = Settings.Global.getString(app.getContentResolver(), "nextepshim_ime_state_v1");
+                    if (v != null && !v.equals(last)) {
+                        last = v;
+                        XposedBridge.log(TAG + "sys ime: " + v);
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        };
+        resolver.registerContentObserver(Settings.Global.getUriFor("nextepshim_ime_state_v1"), false, imeRelay);
         refreshFromSettings(app);
         XposedBridge.log(TAG + "transform hooks installed");
     }
@@ -141,11 +163,21 @@ public class HomeShim implements IXposedHookLoadPackage {
             String geo = Settings.Global.getString(resolver, KEY_GEOMETRY);
             if (geo != null) {
                 String[] parts = geo.split(",");
-                if (parts.length >= 5) {
-                    gScreenW = Integer.parseInt(parts[0].trim());
-                    gTopH = Integer.parseInt(parts[2].trim());
-                    gSidebarW = Integer.parseInt(parts[3].trim());
-                    gSide = parts[4].trim();
+                if (parts.length >= 14) {
+                    pSW = Integer.parseInt(parts[0].trim());
+                    pSH = Integer.parseInt(parts[1].trim());
+                    pTopH = Integer.parseInt(parts[2].trim());
+                    pSB = Integer.parseInt(parts[3].trim());
+                    pSide = parts[4].trim();
+                    pNavL = Integer.parseInt(parts[5].trim());
+                    pNavT = Integer.parseInt(parts[6].trim());
+                    pNavR = Integer.parseInt(parts[7].trim());
+                    pNavB = Integer.parseInt(parts[8].trim());
+                    pCab = Integer.parseInt(parts[10].trim()) == 1;
+                    pSI = Integer.parseInt(parts[11].trim());
+                    pMCH = Integer.parseInt(parts[12].trim());
+                    pBG = Integer.parseInt(parts[13].trim());
+                    hasGeo = pSW > 0 && pSH > 0 && pSB > 0;
                 }
             }
             View decor = decorRef.get();
@@ -157,10 +189,32 @@ public class HomeShim implements IXposedHookLoadPackage {
 
     private static void applyTransform(final View decor, boolean animate) {
         float targetScale = 1f, targetTx = 0f, targetTy = 0f;
-        if (wsActive && gScreenW > 0 && gSidebarW > 0 && gSidebarW < gScreenW) {
-            targetScale = (float) (gScreenW - gSidebarW) / (float) gScreenW;
-            targetTx = "RIGHT".equals(gSide) ? 0f : (float) gSidebarW;
-            targetTy = (float) gTopH;
+        if (wsActive && hasGeo) {
+            boolean exact = false;
+            if (pSW <= pSH) {
+                // Portrait: NeXtep's own launcher fit (contentScale/contentTranslation).
+                int aL = pNavL, aT = pNavT + pSI, aR = pSW - pNavR, aB = pSH - pNavB;
+                int aW = aR - aL, aH = aB - aT;
+                if (aW > 1 && aH > 1 && pSB < aW) {
+                    int contentTop = aT + (pCab ? 0 : pTopH);
+                    int contentWidth = aW - pSB;
+                    int contentHeight = aH - pTopH - pBG;
+                    int contentLeft = aL + ("LEFT".equals(pSide) ? pSB : 0);
+                    if (contentWidth > 1 && contentHeight > 1) {
+                        float cs = Math.min((float) contentWidth / aW, (float) contentHeight / aH);
+                        targetScale = cs;
+                        targetTx = contentLeft + (contentWidth - aW * cs) / 2f - aL * cs;
+                        targetTy = contentTop - aT * cs;
+                        exact = true;
+                    }
+                }
+            }
+            if (!exact) {
+                // Landscape/fallback approximation.
+                targetScale = (float) (pSW - pSB) / (float) pSW;
+                targetTx = "RIGHT".equals(pSide) ? 0f : (float) pSB;
+                targetTy = (float) pTopH;
+            }
         }
         final float fromScale = decor.getScaleX();
         final float fromTx = decor.getTranslationX();

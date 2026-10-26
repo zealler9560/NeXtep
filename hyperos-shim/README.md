@@ -1,4 +1,4 @@
-# NeXtepHomeShim — HyperOS（澎湃）桌面应答与变换模块
+# NeXtepHomeShim — HyperOS（澎湃）桌面应答、变换与输入法贴合模块（v2.6）
 
 > TL;DR: A companion LSPosed module that makes NeXtep / 格窗 Panes usable on
 > Xiaomi HyperOS: it answers the workspace QUERY/SET broadcast protocol inside
@@ -14,8 +14,10 @@ runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS �
 钩子实现；MIUI 桌面（`com.miui.home`）没有应答者，于是切换在第一步就中止
 （诊断日志中表现为 `launcher: no answer`），表现为格窗和上游模块都「进不去」。
 
-本模块是一个独立的 LSPosed 伴生模块（作用域仅 `com.miui.home`），把缺失的
-桌面侧补齐，不修改 NeXtep 本体。
+本模块是一个独立的 LSPosed 伴生模块（作用域 `com.miui.home` + `android`
+系统框架），把 HyperOS 缺失的两侧补齐，不修改 NeXtep 本体：桌面侧的协议
+应答与变换（进程 `com.miui.home`），以及输入法贴合（进程 system_server，
+见实现第 5 点）。
 
 ## 实现（v2.1）
 
@@ -45,6 +47,25 @@ runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS �
 4. **状态以真值为准**：`QUERY` 应答的 `WORKSPACE_ACTIVE` 直接读
    `Settings.Global` 中 NeXtep 发布的真实状态，而不是模块自记的缓存，
    避免桌面进程重启后状态不同步导致退出/切换打架。
+5. **输入法贴合主窗口（v2.2 引入，v2.6 在澎湃上验证通过）**：NeXtep 本体有
+   `WorkspaceImeSurfaceHook` / `WorkspaceImeTargetHook` 两个 system_server
+   钩子负责此事，但在澎湃上未见生效。本模块在 system_server 钩住
+   `DisplayContent.prepareSurfaces`，按本体的几何公式（同一
+   `Settings.Global` 快照）把 IME 容器的变换设为
+   `setMatrix(mainScale)` + `setPosition(mainTranslationX, imeTranslationY)`。
+   与本体的关键差异有二：
+   - **三个 IME 目标逐个评估**：本体只认 `mImeLayeringTarget` 的任务。
+     实测澎湃在工作台激活时，layering target 是一个**没有任务归属的系统
+     窗口**（打字中的应用不在这一路），本体因此静默跳过。本模块对
+     layering / input / control 三个目标分别解析任务，任一命中主画布
+     边界即贴合；
+   - **诊断不沉默**：本体在条件未命中时不留痕迹。本模块把每次状态变化
+     （各目标的任务/边界/窗口标题与包名）经一个 `Settings.Global` 键
+     中转，由桌面进程打进其日志——实测 LSPosed 导出日志中 system 进程
+     的记录会整段断流，桌面进程的日志则完整可靠。
+   `Transaction.setMatrix` 不在公开 SDK 中，与本体一样反射调用。
+   尚未移植：本体 `WorkspaceImeTargetHook` 的交换时 IME 焦点交接
+   （主窗格与侧栏交换任务时的目标转移），症状不同，留待后续。
 
 ## 构建
 
@@ -61,8 +82,9 @@ runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS �
 
 ## 安装
 
-1. 安装 `NeXtepHomeShim.apk`，在 LSPosed 中启用，作用域勾选「系统桌面 /
-   com.miui.home」（清单已预置推荐作用域）；
+1. 安装 `NeXtepHomeShim.apk`，在 LSPosed 中启用，作用域勾选
+   **「系统桌面 / com.miui.home」和「系统框架 / android」两个**（清单已
+   预置推荐作用域；只勾桌面则输入法贴合不加载）；
 2. 格窗本体与上游模块**只启用一个**，避免两个工作台互相抢状态；
 3. 重启后正常使用格窗的进入手势/磁贴即可。
 
@@ -71,7 +93,10 @@ runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS �
 - 设备：REDMI Note 12 Turbo（marble），HyperOS OS2.0.214（Android 15）
 - 对象：Panes 2.6.2（协议 52）；上游模块协议 39 的应答代码路径相同
 - 结果：工作台可正常进入，副窗格渲染真实应用画面（Telegram、视频、音乐等），
-  主区域桌面经变换后归位、点击对位（v2.1）
+  主区域桌面经变换后归位、点击对位（v2.1）；桌面变换自 v2.2 起改用本体
+  的 contentScale/contentTranslation 精确公式；**输入法贴合于 v2.6 验证
+  通过**：在主窗格应用中弹出的键盘收进主窗口宽度内，不再全屏宽盖住
+  侧栏（2026-10-26 截图与日志双验证，贴合命中于 input/layering 目标评估）
 
 ## 已知问题
 
