@@ -101,12 +101,17 @@ internal object UpdateSection {
 
     internal fun openBrowser(activity: AppCompatActivity, address: String) {
         try {
-            // A browser selector avoids handing GitHub links to the GitHub app.
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.requireHttps(address))).apply {
-                addCategory(Intent.CATEGORY_BROWSABLE)
-                selector = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_BROWSER)
+            val view = Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.requireHttps(address)))
+                .addCategory(Intent.CATEGORY_BROWSABLE)
+            try {
+                // A browser selector avoids handing GitHub links to the GitHub app.
+                activity.startActivity(Intent(view).apply {
+                    selector = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_BROWSER)
+                })
+            } catch (_: ActivityNotFoundException) {
+                // Without a default browser the user picks any app that opens https links.
+                activity.startActivity(Intent.createChooser(view, null))
             }
-            activity.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
             Toast.makeText(activity, activity.getString(R.string.browser_unavailable), Toast.LENGTH_LONG).show()
         } catch (_: Exception) {
