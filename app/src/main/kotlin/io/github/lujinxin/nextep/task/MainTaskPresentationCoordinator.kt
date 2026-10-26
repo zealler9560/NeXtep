@@ -30,8 +30,9 @@ class MainTaskPresentationCoordinator(context: Context) {
     private var entrySource: EntrySource? = null
 
     /** The next task of [packageName] to be presented grows out of [source], the icon the user tapped. */
-    fun expectEntryFrom(packageName: String, source: Rect) {
+    fun expectEntryFrom(packageName: String, source: Rect, geometry: WorkspaceGeometry) {
         entrySource = EntrySource(packageName, Rect(source), SystemClock.uptimeMillis() + ENTRY_SOURCE_TTL_MS)
+        TaskSurfaceCompat.expectEntry(packageName, source, mainGeometry(geometry))
     }
 
     /** The source stays until a presentation succeeds: a cold task's first attempt may find no leash yet. */
