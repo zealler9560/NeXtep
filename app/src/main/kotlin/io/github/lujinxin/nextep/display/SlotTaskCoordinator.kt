@@ -775,12 +775,11 @@ class SlotTaskCoordinator(
         val component = checkNotNull(normalized.component)
         val existing = taskRepository.findTaskForComponent(component, normalized.targetUser())
         // An icon launch animates the leash itself; the system's own open transition would zoom
-        // the task from the screen centre at the same time, so it is switched off.
+        // the task from the screen centre at the same time, so it becomes a fade.
         val fromIcon = normalized.sourceBounds != null
         normalized.sourceBounds?.let { mainTaskPresenter.expectEntryFrom(component.packageName, it, geometryProvider()) }
-        if (fromIcon) normalized.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-        fun launchOptions() = (if (fromIcon) android.app.ActivityOptions.makeCustomAnimation(applicationContext, 0, 0)
-            else android.app.ActivityOptions.makeBasic()).apply { setLaunchDisplayId(Display.DEFAULT_DISPLAY) }
+        fun launchOptions() = (if (fromIcon) iconLaunchAnimation() else android.app.ActivityOptions.makeBasic())
+            .apply { setLaunchDisplayId(Display.DEFAULT_DISPLAY) }
 
         return runTransition("open main component=$component") {
             val currentMain = taskRepository.foregroundTask()
@@ -817,6 +816,19 @@ class SlotTaskCoordinator(
             }
         }
     }
+
+    /**
+     * The task fades in over its own icon zoom while the desktop fades out under it. Switching the
+     * transition off instead ended it at once, and WM hid the desktop behind the still icon-sized task.
+     */
+    private fun iconLaunchAnimation(): android.app.ActivityOptions = android.app.ActivityOptions
+        .makeCustomAnimation(applicationContext, android.R.anim.fade_in, android.R.anim.fade_out).also { options ->
+            // Shell applies a custom animation to task-level changes only with this hidden switch.
+            runCatching {
+                android.app.ActivityOptions::class.java.getMethod("setOverrideTaskTransition", Boolean::class.javaPrimitiveType)
+                    .invoke(options, true)
+            }.onFailure { NeXtepLog.warn("top_apps", "Task transition override unavailable", it) }
+        }
 
     /** A slot with nothing in it or on its way to it, or -1. */
     private fun emptySlot(tasks: List<TaskRepository.TaskSnapshot>): Int = slotRecords.indexOfFirst { record ->
