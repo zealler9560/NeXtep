@@ -140,6 +140,17 @@ object LauncherTransformController {
         TouchCoordinateMapper.toScreen(event, transform)
     }
 
+    /**
+     * [view]'s rectangle on screen under the workspace fit. getLocationOnScreen maps through the
+     * decor's matrix already; the size is scaled here. A labelled icon contributes its top square.
+     */
+    fun screenBounds(view: View): Rect {
+        val scale = (if (active) appliedTransform?.scaleX else null) ?: 1f
+        val at = IntArray(2).also(view::getLocationOnScreen)
+        val side = minOf(view.width, view.height)
+        return Rect(at[0], at[1], at[0] + Math.round(view.width * scale), at[1] + Math.round(side * scale))
+    }
+
     private fun applyTo(decor: View) {
         if (LauncherPackageResolver.isAssistantScreen(decor.context) && !isAssistantPanel(decor)) return
         val displayMetrics = decor.resources.displayMetrics

@@ -68,6 +68,9 @@ object ColorOsLauncherHook {
                         if (!WorkspaceLauncherAnimationPolicy.useStaticSource(
                                 LauncherTransformController.isActive(), intent)) return chain.proceed()
                         val args = chain.args.toTypedArray()
+                        // Launcher3 records the icon's bounds only with a source view; SystemUI grows
+                        // the task out of them instead.
+                        (args[0] as? View)?.let { intent?.sourceBounds = LauncherTransformController.screenBounds(it) }
                         args[0] = null
                         return chain.proceed(args)
                     }

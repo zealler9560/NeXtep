@@ -774,6 +774,7 @@ class SlotTaskCoordinator(
             ?: return Result.failure(IllegalArgumentException("App does not resolve to a launcher Activity"))
         val component = checkNotNull(normalized.component)
         val existing = taskRepository.findTaskForComponent(component, normalized.targetUser())
+        normalized.sourceBounds?.let { mainTaskPresenter.expectEntryFrom(component.packageName, it) }
 
         return runTransition("open main component=$component") {
             val currentMain = taskRepository.foregroundTask()

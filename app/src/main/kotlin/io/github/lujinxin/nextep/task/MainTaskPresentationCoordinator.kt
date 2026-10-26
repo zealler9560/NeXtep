@@ -2,6 +2,7 @@ package io.github.lujinxin.nextep.task
 
 import android.content.Context
 import android.graphics.Rect
+import android.os.SystemClock
 import android.view.Display
 import io.github.lujinxin.nextep.framework.ActivityTaskManagerCompat
 import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
@@ -24,6 +25,22 @@ class MainTaskPresentationCoordinator(context: Context) {
     /** An app hiding the status bar draws content at its top, so it is shown whole instead of cropped. */
     private fun mainGeometry(geometry: WorkspaceGeometry) = if (statusBarHidden()) geometry.uncropped() else geometry
     private var homePresented = false
+
+    private class EntrySource(val packageName: String, val bounds: Rect, val until: Long)
+    private var entrySource: EntrySource? = null
+
+    /** The next task of [packageName] to be presented grows out of [source], the icon the user tapped. */
+    fun expectEntryFrom(packageName: String, source: Rect) {
+        entrySource = EntrySource(packageName, Rect(source), SystemClock.uptimeMillis() + ENTRY_SOURCE_TTL_MS)
+    }
+
+    private fun takeEntrySource(packageName: String): Rect? {
+        val entry = entrySource ?: return null
+        if (SystemClock.uptimeMillis() > entry.until) { entrySource = null; return null }
+        if (entry.packageName != packageName) return null
+        entrySource = null
+        return entry.bounds
+    }
 
     fun presentForeground(geometry: WorkspaceGeometry): Result<Unit> {
         val task = taskRepository.foregroundTask()
@@ -67,6 +84,7 @@ class MainTaskPresentationCoordinator(context: Context) {
 
         val main = mainGeometry(geometry)
         pendingRestores -= task.taskId
+        val source = takeEntrySource(task.component.packageName)
         if (presentedTaskId == task.taskId && activePresenter === surfacePresenter) {
             return applyMainBounds(task, geometry).mapCatching { surfacePresenter.reapply(task.taskId, main).getOrThrow() }
         }
@@ -75,7 +93,7 @@ class MainTaskPresentationCoordinator(context: Context) {
         // rotation and can leave a portrait Activity confined to the old landscape area.
         homePresented = false
         val surfaceResult = applyMainBounds(task, geometry).mapCatching {
-            surfacePresenter.present(task.taskId, main).getOrThrow()
+            surfacePresenter.present(task.taskId, main, source).getOrThrow()
         }
         if (surfaceResult.isSuccess) {
             val previousTaskId = presentedTaskId
@@ -256,6 +274,8 @@ class MainTaskPresentationCoordinator(context: Context) {
 
     private companion object {
         const val WINDOWING_MODE_FULLSCREEN = 1
+        /** Covers the launch polling; an icon tap older than this no longer explains a new task. */
+        const val ENTRY_SOURCE_TTL_MS = 3_000L
     }
 
     private fun isMainFullscreen(task: TaskRepository.TaskSnapshot): Boolean =

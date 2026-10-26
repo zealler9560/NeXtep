@@ -101,7 +101,7 @@ object LauncherRuntime {
             )
             NeXtepLog.info(
                 "launcher_redirect",
-                "Redirected component=$component to SystemUI workspace",
+                "Redirected component=$component to SystemUI workspace from=${intent.sourceBounds}",
             )
             true
         }.getOrElse { error ->

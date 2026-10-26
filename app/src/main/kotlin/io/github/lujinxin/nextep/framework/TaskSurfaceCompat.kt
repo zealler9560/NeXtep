@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
  * matching the reference OneStep implementation and avoiding ColorOS freeform re-layout.
  */
 object TaskSurfaceCompat {
-    private data class SurfaceFrame(
+    internal data class SurfaceFrame(
         val scaleX: Float,
         val scaleY: Float,
         val positionX: Float,
@@ -251,7 +251,8 @@ object TaskSurfaceCompat {
     fun hasPresentableSurface(taskId: Int, requireMainDisplay: Boolean = true): Boolean =
         findTaskLeash(taskId, requireMainDisplay)?.let(::isValid) == true
 
-    fun present(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> = runCatching {
+    /** [source]: the screen rectangle of the icon the user tapped; the task grows out of it. */
+    fun present(taskId: Int, geometry: WorkspaceGeometry, source: Rect? = null): Result<Unit> = runCatching {
         require(taskId > 0) { "Invalid taskId=$taskId" }
         // Recovery polling must not restart the entry fade on an already presented task.
         if (activePresentations.containsKey(taskId)) {
@@ -265,6 +266,7 @@ object TaskSurfaceCompat {
         val scaleX = geometry.mainScale
         val scaleY = scaleX
         val now = SystemClock.uptimeMillis()
+        val crop = sourceCrop(geometry)
         val presentation = ActivePresentation(
             taskId = taskId,
             leash = leash,
@@ -274,26 +276,31 @@ object TaskSurfaceCompat {
             positionY = geometry.mainTranslationY,
             reapplyUntil = now + REAPPLY_WINDOW_MS,
             lastAppliedAt = now,
-            crop = sourceCrop(geometry),
+            crop = crop,
         )
         val prepared = preparedPresentations[taskId]
         activePresentations[taskId] = presentation
         preparedPresentations.remove(taskId)
-        if (prepared != null || geometry.navigationInsets != WorkspaceNavigationInsets()) {
+        val entry = source?.takeIf { !it.isEmpty }?.let { entryFrame(it, crop) }
+        if (prepared != null || (entry == null && geometry.navigationInsets != WorkspaceNavigationInsets())) {
             // Promotion and recorded-button cold launches fit their native first
             // frame already. Do not shrink it again with a second entry zoom.
             applyPresentation(presentation)
         } else animatePresentation(
-            // Shrink from the full-screen task the user is looking at, in step with the panels.
+            // Grow out of the tapped icon like the launcher does; without one, shrink from the
+            // full-screen task the user is looking at, in step with the panels.
             taskId = taskId,
-            from = presentation.copy(scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f),
+            from = if (entry != null) presentation.copy(scaleX = entry.scaleX, scaleY = entry.scaleY,
+                positionX = entry.positionX, positionY = entry.positionY, crop = entry.crop)
+            else presentation.copy(scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f),
             to = presentation,
             fadeIn = true,
+            durationMs = if (entry != null) ENTRY_DURATION_MS else PRESENT_DURATION_MS,
         )
         NeXtepLog.info(
             "task_surface",
             "Presented taskId=$taskId scale=$scaleX,$scaleY " +
-                "position=${geometry.contentLeft},${geometry.contentTop}",
+                "position=${geometry.contentLeft},${geometry.contentTop} from=$source",
         )
     }.onFailure { error ->
         NeXtepLog.error("task_surface", "Presentation failed taskId=$taskId", error)
@@ -421,7 +428,7 @@ object TaskSurfaceCompat {
             scaleY = from.scaleY,
             positionX = from.positionX,
             positionY = from.positionY,
-            crop = to.crop,
+            crop = lerp(from.crop, to.crop, 0f),
         )
         val animator = ValueAnimator.ofFloat(0f, 1f)
         animator.duration = durationMs
@@ -440,7 +447,7 @@ object TaskSurfaceCompat {
                     scaleY = lerp(from.scaleY, to.scaleY, progress),
                     positionX = lerp(from.positionX, to.positionX, progress),
                     positionY = lerp(from.positionY, to.positionY, progress),
-                    crop = to.crop,
+                    crop = lerp(from.crop, to.crop, progress),
                 )
             }.onFailure { error ->
                 valueAnimator.cancel()
@@ -477,6 +484,15 @@ object TaskSurfaceCompat {
 
     private fun lerp(start: Float, end: Float, progress: Float): Float =
         start + (end - start) * progress
+
+    /** A crop only moves when both ends have one; a vanishing crop lifts at once. */
+    private fun lerp(from: Rect?, to: Rect?, progress: Float): Rect? =
+        if (from == null || to == null) to else Rect(
+            Math.round(lerp(from.left.toFloat(), to.left.toFloat(), progress)),
+            Math.round(lerp(from.top.toFloat(), to.top.toFloat(), progress)),
+            Math.round(lerp(from.right.toFloat(), to.right.toFloat(), progress)),
+            Math.round(lerp(from.bottom.toFloat(), to.bottom.toFloat(), progress)),
+        )
 
     private fun applyPresentation(
         taskId: Int,
@@ -757,8 +773,27 @@ object TaskSurfaceCompat {
     private const val MIN_REAPPLY_INTERVAL_MS = 120L
     private const val STEADY_REAPPLY_INTERVAL_MS = 900L
     private const val PRESENT_DURATION_MS = 240L
+    /** Close to the launcher's own icon-to-window open. */
+    private const val ENTRY_DURATION_MS = 360L
     private const val REPOSITION_DURATION_MS = 260L
     private const val RESTORE_DURATION_MS = 180L
+}
+
+/**
+ * The first frame of an entry from [source], an icon's screen rectangle: the task's [crop] is scaled
+ * to the icon's width and a slice of it, centred and as tall as the icon, is placed over the icon.
+ */
+internal fun entryFrame(source: Rect, crop: Rect): TaskSurfaceCompat.SurfaceFrame {
+    val scale = source.width().toFloat() / crop.width()
+    val sliceHeight = (source.height() / scale).coerceAtMost(crop.height().toFloat())
+    val sliceTop = crop.exactCenterY() - sliceHeight / 2f
+    val slice = Rect(crop.left, Math.round(sliceTop), crop.right, Math.round(sliceTop + sliceHeight))
+    return TaskSurfaceCompat.SurfaceFrame(
+        scale, scale,
+        source.left - crop.left * scale,
+        source.top - sliceTop * scale,
+        slice,
+    )
 }
 
 /**
