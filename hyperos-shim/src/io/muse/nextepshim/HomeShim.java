@@ -53,12 +53,6 @@ public class HomeShim implements IXposedHookLoadPackage {
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if ("android".equals(lpparam.packageName)) {
-            // Only HyperOS/MIUI lacks NeXtep's own IME fit; on ColorOS the two hooks would
-            // scale the input method twice if a user enabled this scope by mistake.
-            if (!isMiuiRom()) {
-                XposedBridge.log(TAG + "not a MIUI/HyperOS build; ime fit not installed");
-                return;
-            }
             ImeFit.install(lpparam.classLoader);
             return;
         }
@@ -101,32 +95,14 @@ public class HomeShim implements IXposedHookLoadPackage {
     private static synchronized void register(Context ctx) {
         if (registered) return;
         registered = true;
+        IntentFilter filter = new IntentFilter();
         for (String[] ns : NAMESPACES) {
-            // QUERY/SET: the sender must hold the module's signature permission, as NeXtep's own
-            // launcher receiver requires; SYSTEMUI_SET comes from SystemUI and stays open, as in NeXtep.
-            IntentFilter control = new IntentFilter();
-            control.addAction(ns[0] + ".action.QUERY_WORKSPACE");
-            control.addAction(ns[0] + ".action.SET_WORKSPACE");
-            ctx.registerReceiver(new HomeResponder(), control, ns[0] + ".permission.CONTROL_WORKSPACE", null,
-                Context.RECEIVER_EXPORTED);
-            IntentFilter systemUi = new IntentFilter(ns[0] + ".action.SYSTEMUI_SET_WORKSPACE");
-            ctx.registerReceiver(new HomeResponder(), systemUi, Context.RECEIVER_EXPORTED);
+            filter.addAction(ns[0] + ".action.QUERY_WORKSPACE");
+            filter.addAction(ns[0] + ".action.SET_WORKSPACE");
+            filter.addAction(ns[0] + ".action.SYSTEMUI_SET_WORKSPACE");
         }
+        ctx.registerReceiver(new HomeResponder(), filter, Context.RECEIVER_EXPORTED);
         XposedBridge.log(TAG + "responder registered in com.miui.home");
-    }
-
-    /** HyperOS/MIUI only: Xiaomi builds carry the MIUI (or HyperOS) version property. */
-    private static boolean isMiuiRom() {
-        try {
-            Class<?> sp = Class.forName("android.os.SystemProperties");
-            java.lang.reflect.Method get = sp.getMethod("get", String.class, String.class);
-            for (String key : new String[] {"ro.miui.ui.version.code", "ro.miui.ui.version.name", "ro.mi.os.version.name"}) {
-                String v = (String) get.invoke(null, key, "");
-                if (v != null && !v.isEmpty()) return true;
-            }
-        } catch (Throwable ignored) {
-        }
-        return "xiaomi".equalsIgnoreCase(android.os.Build.MANUFACTURER);
     }
 
     // ---------------- v2: launcher transform ----------------
@@ -283,8 +259,7 @@ public class HomeShim implements IXposedHookLoadPackage {
             String[] ns = nsFor(action);
             if (ns == null) return;
             String prefix = ns[0];
-            // Echo the version the asking build expects; the table value only serves older builds.
-            int protocol = intent.getIntExtra(prefix + ".extra.RUNTIME_PROTOCOL_VERSION", Integer.parseInt(ns[1]));
+            int protocol = Integer.parseInt(ns[1]);
             try {
                 if (action.endsWith(".action.QUERY_WORKSPACE")) {
                     reply(prefix, protocol);
