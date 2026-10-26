@@ -44,9 +44,16 @@ runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS �
    （decor 的变换不参与窗口事件坐标换算）。本模块钩住桌面 Activity 的
    `dispatchTouchEvent`，把事件坐标按逆变换 `(p - t) / scale` 映射回桌面
    坐标系后再分发，与原版 `TouchCoordinateMapper` 的思路一致。
-4. **状态以真值为准**：`QUERY` 应答的 `WORKSPACE_ACTIVE` 直接读
+4. **中继只认变化（v2.7）**：协调器执行完每个 `HOST_SET_REQUEST` 都会再发
+   一条 `SYSTEMUI_SET_WORKSPACE` 做回告；原版桌面是这条回告的终点消费者
+   （只施加变换，不回送）。若垫片把回告也中继回去，就会形成自激广播循环
+   ——实测 2026-10-26 曾在约 2 分钟内中继 3,738 次（约 100 Hz），表现为
+   桌面在变换状态间疯狂横跳。故中继加值守：与上次中继值相同的
+   `SYSTEMUI_SET` 一律按回声丢弃（计数、限频打日志）；真正的请求必然
+   翻转取值，不受影响。
+5. **状态以真值为准**：`QUERY` 应答的 `WORKSPACE_ACTIVE` 直接读
    `Settings.Global` 中 NeXtep 发布的真实状态，而不是模块自记的缓存，
-   避免桌面进程重启后状态不同步导致退出/切换打架。
+   避免桌面进程重启后状态不同步导致退出/切换打架。（原第 4 点，顺延）
 5. **输入法贴合主窗口（v2.2 引入，v2.6 在澎湃上验证通过）**：NeXtep 本体有
    `WorkspaceImeSurfaceHook` / `WorkspaceImeTargetHook` 两个 system_server
    钩子负责此事，但在澎湃上未见生效。本模块在 system_server 钩住
@@ -96,7 +103,9 @@ runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS �
   主区域桌面经变换后归位、点击对位（v2.1）；桌面变换自 v2.2 起改用本体
   的 contentScale/contentTranslation 精确公式；**输入法贴合于 v2.6 验证
   通过**：在主窗格应用中弹出的键盘收进主窗口宽度内，不再全屏宽盖住
-  侧栏（2026-10-26 截图与日志双验证，贴合命中于 input/layering 目标评估）
+  侧栏（2026-10-26 截图与日志双验证，贴合命中于 input/layering 目标评估）；
+  v2.7 的回声值守经同日实测：广播风暴消失，进出与磁贴开关的中继次数
+  回到个位数
 
 ## 已知问题
 

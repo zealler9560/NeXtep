@@ -12,6 +12,7 @@ import android.content.IntentFilter;
 import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
@@ -253,6 +254,10 @@ public class HomeShim implements IXposedHookLoadPackage {
     }
 
     private static class HomeResponder extends BroadcastReceiver {
+        private static Boolean lastRelayed = null;
+        private static int droppedEchoes = 0;
+        private static long lastEchoLogMs = 0;
+
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
@@ -270,6 +275,25 @@ public class HomeShim implements IXposedHookLoadPackage {
                     XposedBridge.log(TAG + "SET applied active=" + active + " proto=" + protocol);
                 } else if (action.endsWith(".action.SYSTEMUI_SET_WORKSPACE")) {
                     boolean requested = intent.getBooleanExtra(prefix + ".extra.REQUESTED_ACTIVE", active);
+                    // Echo guard (v2.7): the broker re-notifies SYSTEMUI_SET
+                    // after applying every HOST_SET_REQUEST. Relaying that
+                    // echo again closes a self-sustaining broadcast loop
+                    // (~100 Hz; observed 2026-10-26: 3,738 relays in ~2 min,
+                    // launcher jittering). In the original design the
+                    // launcher consumes SYSTEMUI_SET terminally; a genuine
+                    // new request always flips the value vs. the last one
+                    // relayed, so same-value repeats are echoes: drop them.
+                    if (lastRelayed != null && lastRelayed == requested) {
+                        droppedEchoes++;
+                        long now = SystemClock.uptimeMillis();
+                        if (now - lastEchoLogMs >= 5000) {
+                            lastEchoLogMs = now;
+                            XposedBridge.log(TAG + "SYSTEMUI_SET echo dropped active="
+                                + requested + " total=" + droppedEchoes);
+                        }
+                        return;
+                    }
+                    lastRelayed = requested;
                     Intent relay = new Intent(prefix + ".action.HOST_SET_REQUEST");
                     relay.setComponent(new ComponentName(ns[2],
                         "io.github.lujinxin.nextep.trigger.WorkspaceControlBrokerReceiver"));
