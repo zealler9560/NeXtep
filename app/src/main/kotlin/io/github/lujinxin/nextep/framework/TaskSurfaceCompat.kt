@@ -121,6 +121,9 @@ object TaskSurfaceCompat {
 
     fun hasEntryPrepared(taskId: Int): Boolean = entryPresentations.containsKey(taskId)
 
+    /** Shell has reported the task with its leash; cheap, unlike a lookup through the organizer. */
+    fun hasObservedLeash(taskId: Int): Boolean = observedLeashes.containsKey(taskId)
+
     private fun prepareEntry(info: ActivityManager.RunningTaskInfo, leash: Any) {
         val expected = expectedEntry ?: return
         val now = SystemClock.uptimeMillis()
