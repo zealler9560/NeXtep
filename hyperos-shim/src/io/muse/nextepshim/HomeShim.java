@@ -29,6 +29,20 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class HomeShim implements IXposedHookLoadPackage {
     private static final String TAG = "NeXtepHomeShim: ";
+    private static final String VERSION = "2.8";
+    /** Recent log lines, answered to the main app's diagnostics export (the LSPosed log is not in it). */
+    private static final java.util.ArrayDeque<String> RECENT = new java.util.ArrayDeque<>();
+    private static final java.util.Set<String> SEEN_ACTIVITIES = new java.util.HashSet<>();
+
+    static synchronized void log(String message) {
+        XposedBridge.log(TAG + message);
+        RECENT.addLast(new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(new java.util.Date()) + " " + message);
+        while (RECENT.size() > 200) RECENT.removeFirst();
+    }
+
+    static synchronized String recent() {
+        return String.join("\n", RECENT);
+    }
     private static final int RESULT_HANDLED = 0x4E58;
     private static boolean registered = false;
     private static volatile boolean active = false;
@@ -56,7 +70,7 @@ public class HomeShim implements IXposedHookLoadPackage {
             // Only HyperOS/MIUI lacks NeXtep's own IME fit; on ColorOS the two hooks would
             // scale the input method twice if a user enabled this scope by mistake.
             if (!isMiuiRom()) {
-                XposedBridge.log(TAG + "not a MIUI/HyperOS build; ime fit not installed");
+                log("not a MIUI/HyperOS build; ime fit not installed");
                 return;
             }
             ImeFit.install(lpparam.classLoader);
@@ -72,11 +86,11 @@ public class HomeShim implements IXposedHookLoadPackage {
                     register(app);
                     installTransformHooks(app);
                 } catch (Throwable t) {
-                    XposedBridge.log(TAG + "init failed " + t);
+                    log("init failed " + t);
                 }
             }
         });
-        XposedBridge.log(TAG + "hooked com.miui.home Application.onCreate");
+        log("hooked com.miui.home Application.onCreate");
         XposedHelpers.findAndHookMethod(Activity.class, "dispatchTouchEvent", MotionEvent.class, new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) {
@@ -92,7 +106,7 @@ public class HomeShim implements IXposedHookLoadPackage {
                     m.postScale(1f / curScale, 1f / curScale);
                     ev.transform(m);
                 } catch (Throwable t) {
-                    XposedBridge.log(TAG + "touch map failed " + t);
+                    log("touch map failed " + t);
                 }
             }
         });
@@ -111,8 +125,10 @@ public class HomeShim implements IXposedHookLoadPackage {
                 Context.RECEIVER_EXPORTED);
             IntentFilter systemUi = new IntentFilter(ns[0] + ".action.SYSTEMUI_SET_WORKSPACE");
             ctx.registerReceiver(new HomeResponder(), systemUi, Context.RECEIVER_EXPORTED);
+            IntentFilter diagnostics = new IntentFilter(ns[0] + ".action.QUERY_LAUNCHER_DIAGNOSTICS");
+            ctx.registerReceiver(new DiagnosticsResponder(), diagnostics, Context.RECEIVER_EXPORTED);
         }
-        XposedBridge.log(TAG + "responder registered in com.miui.home");
+        log("responder registered in com.miui.home");
     }
 
     /** HyperOS/MIUI only: Xiaomi builds carry the MIUI (or HyperOS) version property. */
@@ -136,13 +152,15 @@ public class HomeShim implements IXposedHookLoadPackage {
             @Override public void onActivityResumed(Activity activity) {
                 try {
                     String name = activity.getClass().getName();
-                    if (name.contains("miui.home") && name.contains("Launcher")) {
+                    boolean launcher = name.contains("miui.home") && name.contains("Launcher");
+                    if (SEEN_ACTIVITIES.size() < 12 && SEEN_ACTIVITIES.add(name)) log("resumed " + name + " launcher=" + launcher);
+                    if (launcher) {
                         View decor = activity.getWindow().getDecorView();
                         decorRef = new WeakReference<>(decor);
                         applyTransform(decor, false);
                     }
                 } catch (Throwable t) {
-                    XposedBridge.log(TAG + "resume hook failed " + t);
+                    log("resume hook failed " + t);
                 }
             }
             @Override public void onActivityCreated(Activity a, Bundle b) {}
@@ -169,7 +187,7 @@ public class HomeShim implements IXposedHookLoadPackage {
                     String v = Settings.Global.getString(app.getContentResolver(), "nextepshim_ime_state_v1");
                     if (v != null && !v.equals(last)) {
                         last = v;
-                        XposedBridge.log(TAG + "sys ime: " + v);
+                        log("sys ime: " + v);
                     }
                 } catch (Throwable ignored) {
                 }
@@ -177,7 +195,7 @@ public class HomeShim implements IXposedHookLoadPackage {
         };
         resolver.registerContentObserver(Settings.Global.getUriFor("nextepshim_ime_state_v1"), false, imeRelay);
         refreshFromSettings(app);
-        XposedBridge.log(TAG + "transform hooks installed");
+        log("transform hooks installed");
     }
 
     private static void refreshFromSettings(Context ctx) {
@@ -185,6 +203,7 @@ public class HomeShim implements IXposedHookLoadPackage {
             ContentResolver resolver = ctx.getContentResolver();
             wsActive = Settings.Global.getInt(resolver, KEY_ACTIVE, 0) == 1;
             String geo = Settings.Global.getString(resolver, KEY_GEOMETRY);
+            log("settings active=" + wsActive + " geometry=" + geo + " decor=" + (decorRef.get() != null));
             if (geo != null) {
                 String[] parts = geo.split(",");
                 if (parts.length >= 14) {
@@ -207,7 +226,7 @@ public class HomeShim implements IXposedHookLoadPackage {
             View decor = decorRef.get();
             if (decor != null) applyTransform(decor, true);
         } catch (Throwable t) {
-            XposedBridge.log(TAG + "refresh failed " + t);
+            log("refresh failed " + t);
         }
     }
 
@@ -245,7 +264,7 @@ public class HomeShim implements IXposedHookLoadPackage {
         final float fromTy = decor.getTranslationY();
         final float toScale = targetScale, toTx = targetTx, toTy = targetTy;
         curScale = toScale; curTx = toTx; curTy = toTy;
-        XposedBridge.log(TAG + "transform target scale=" + toScale + " tx=" + toTx + " ty=" + toTy + " wsActive=" + wsActive);
+        log("transform target scale=" + toScale + " tx=" + toTx + " ty=" + toTy + " wsActive=" + wsActive);
         decor.setPivotX(0f);
         decor.setPivotY(0f);
         if (runningAnim != null) runningAnim.cancel();
@@ -276,6 +295,21 @@ public class HomeShim implements IXposedHookLoadPackage {
         return null;
     }
 
+    /** Answers the main app's diagnostics export, as its own launcher hook does on ColorOS. */
+    private static class DiagnosticsResponder extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!isOrderedBroadcast()) return;
+            android.app.PendingIntent identity = intent.getParcelableExtra("systemui_identity");
+            if (identity == null || !"com.android.systemui".equals(identity.getCreatorPackage())) return;
+            Bundle extras = new Bundle();
+            extras.putString("events", "NeXtepHomeShim " + VERSION + " wsActive=" + wsActive + " hasGeo=" + hasGeo
+                + " scale=" + curScale + " decor=" + (decorRef.get() != null) + "\n" + recent());
+            setResultCode(35201);
+            setResultExtras(extras);
+        }
+    }
+
     private static class HomeResponder extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -288,11 +322,11 @@ public class HomeShim implements IXposedHookLoadPackage {
             try {
                 if (action.endsWith(".action.QUERY_WORKSPACE")) {
                     reply(prefix, protocol);
-                    XposedBridge.log(TAG + "QUERY answered active=" + active + " proto=" + protocol);
+                    log("QUERY answered active=" + active + " proto=" + protocol);
                 } else if (action.endsWith(".action.SET_WORKSPACE")) {
                     active = intent.getBooleanExtra(prefix + ".extra.REQUESTED_ACTIVE", active);
                     reply(prefix, protocol);
-                    XposedBridge.log(TAG + "SET applied active=" + active + " proto=" + protocol);
+                    log("SET applied active=" + active + " proto=" + protocol);
                 } else if (action.endsWith(".action.SYSTEMUI_SET_WORKSPACE")) {
                     boolean requested = intent.getBooleanExtra(prefix + ".extra.REQUESTED_ACTIVE", active);
                     Intent relay = new Intent(prefix + ".action.HOST_SET_REQUEST");
@@ -300,10 +334,10 @@ public class HomeShim implements IXposedHookLoadPackage {
                         "io.github.lujinxin.nextep.trigger.WorkspaceControlBrokerReceiver"));
                     relay.putExtra(prefix + ".extra.REQUESTED_ACTIVE", requested);
                     context.sendBroadcast(relay);
-                    XposedBridge.log(TAG + "SYSTEMUI_SET relayed active=" + requested);
+                    log("SYSTEMUI_SET relayed active=" + requested);
                 }
             } catch (Throwable t) {
-                XposedBridge.log(TAG + "onReceive failed " + t);
+                log("onReceive failed " + t);
             }
         }
 

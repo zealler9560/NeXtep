@@ -13,6 +13,8 @@ NeXtep 的 `TriggerCoordinator.requestToggle` 在打开工作台前，会先向 
 runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS 上由其桌面
 钩子实现；MIUI 桌面（`com.miui.home`）没有应答者，于是切换在第一步就中止
 （诊断日志中表现为 `launcher: no answer`），表现为格窗和上游模块都「进不去」。
+   2.8 起本模块也应答诊断导出：格窗导出的日志末尾 `--- launcher` 段会附上
+   本模块自己的近 200 行记录（钩子是否装上、看到的桌面 Activity、读到的几何串、每次变换目标）。
 
 本模块是一个独立的 LSPosed 伴生模块（作用域 `com.miui.home` + `android`
 系统框架），把 HyperOS 缺失的两侧补齐，不修改 NeXtep 本体：桌面侧的协议
