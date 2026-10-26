@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.yishisanren.panes"
         minSdk = 35
         targetSdk = 36
-        versionCode = 100
-        versionName = "2.6.5"
+        versionCode = 104
+        versionName = "2.6.6"
 
     }
 
