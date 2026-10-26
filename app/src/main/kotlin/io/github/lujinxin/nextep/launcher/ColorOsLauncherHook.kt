@@ -68,9 +68,8 @@ object ColorOsLauncherHook {
                         if (!WorkspaceLauncherAnimationPolicy.useStaticSource(
                                 LauncherTransformController.isActive(), intent)) return chain.proceed()
                         val args = chain.args.toTypedArray()
-                        // Launcher3 records the icon's bounds only with a source view; SystemUI grows
-                        // the task out of them instead, once the task exists. Until then the icon
-                        // itself lifts, so the tap answers at once like the native open does.
+                        // Launcher3 records the icon's bounds only with a source view; SystemUI flies
+                        // its own copy of the icon out of them instead, and the desktop icon leaves.
                         (args[0] as? View)?.takeIf { it.width > 0 && it.isAttachedToWindow }?.let { icon ->
                             intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
                             liftIcon(icon)
@@ -243,17 +242,11 @@ class AssistantViewRootHooker : XposedInterface.Hooker {
 
 private const val ASSISTANT_SCREEN_PACKAGE = "com.coloros.assistantscreen"
 
-/** The tapped icon grows and fades over the app's start-up, then comes back under the opened task. */
+/** The desktop icon leaves while SystemUI's copy of it flies to the pane; it comes back under the opened task. */
 private fun liftIcon(icon: View) {
     icon.animate().cancel()
-    icon.animate().scaleX(1.3f).scaleY(1.3f).alpha(0f).setDuration(220L).withEndAction {
-        icon.postDelayed({
-            icon.animate().cancel()
-            icon.scaleX = 1f
-            icon.scaleY = 1f
-            icon.alpha = 1f
-        }, 600L)
-    }.start()
+    icon.alpha = 0f
+    icon.postDelayed({ icon.alpha = 1f }, 900L)
 }
 
 class LauncherStartActivityHooker : XposedInterface.Hooker {

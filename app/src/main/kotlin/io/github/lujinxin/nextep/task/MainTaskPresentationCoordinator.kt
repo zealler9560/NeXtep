@@ -29,10 +29,13 @@ class MainTaskPresentationCoordinator(context: Context) {
     private class EntrySource(val packageName: String, val bounds: Rect, val until: Long)
     private var entrySource: EntrySource? = null
 
-    /** The next task of [packageName] to be presented grows out of [source], the icon the user tapped. */
+    /** Called once the task launched from an icon is in place, so the flying icon can fade away. */
+    var onEntryPresented: (() -> Unit)? = null
+
+    /** The next task of [packageName] to be presented was launched from [source], the icon the user tapped. */
     fun expectEntryFrom(packageName: String, source: Rect, geometry: WorkspaceGeometry) {
         entrySource = EntrySource(packageName, Rect(source), SystemClock.uptimeMillis() + ENTRY_SOURCE_TTL_MS)
-        TaskSurfaceCompat.expectEntry(packageName, source, mainGeometry(geometry))
+        TaskSurfaceCompat.expectEntry(packageName, mainGeometry(geometry))
     }
 
     /** The source stays until a presentation succeeds: a cold task's first attempt may find no leash yet. */
@@ -96,7 +99,10 @@ class MainTaskPresentationCoordinator(context: Context) {
             surfacePresenter.present(task.taskId, main, source).getOrThrow()
         }
         if (surfaceResult.isSuccess) {
-            if (source != null) entrySource = null
+            if (source != null) {
+                entrySource = null
+                onEntryPresented?.invoke()
+            }
             val previousTaskId = presentedTaskId
             val previousPresenter = activePresenter
             presentedTaskId = task.taskId

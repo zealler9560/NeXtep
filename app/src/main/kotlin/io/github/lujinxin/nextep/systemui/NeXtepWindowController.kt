@@ -385,6 +385,7 @@ class NeXtepWindowController(
         runCatching {
             context.contentResolver.registerContentObserver(SystemServerWorkspaceBridge.sceneUri(), false, sceneObserver)
         }.onFailure { NeXtepLog.warn("workbench_scene", "Scene observer unavailable", it) }
+        mainTaskPresenter.onEntryPresented = { backdropHandler.post { iconLaunch.finish() } }
         mainTaskPresenter.onHomePresented = {
             backdropHandler.post {
                 if (!suspended && workspaceVisible) refreshWallpaperBackdrop()
@@ -924,9 +925,22 @@ class NeXtepWindowController(
                     }
                 } },
                 pauseRules = pauseRules,
+                onIconLaunch = ::flyIcon,
                 autoMinimizeMain = SystemUiRuntime::shouldAutoMinimizeMainOnTopAppSwitch,
             )
         }
+    }
+
+    private val iconLaunch = IconLaunchOverlay(context) { SystemUiWindowTypeResolver.resolve() }
+
+    /** The tapped icon flies from [source] to the main pane on a plate of its colour, covering the black first frames. */
+    private fun flyIcon(component: android.content.ComponentName, source: android.graphics.Rect) {
+        if (source.isEmpty) return
+        val icon = runCatching { context.packageManager.getActivityIcon(component) }
+            .recoverCatching { context.packageManager.getApplicationIcon(component.packageName) }
+            .getOrNull() ?: return
+        val geometry = geometry()
+        iconLaunch.start(icon, source, android.graphics.Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom))
     }
 
     private fun cancelDragVisuals(keepOverlay: Boolean = false) {

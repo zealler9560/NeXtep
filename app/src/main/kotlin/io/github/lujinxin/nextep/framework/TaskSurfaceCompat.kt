@@ -104,18 +104,19 @@ object TaskSurfaceCompat {
 
     private class ExpectedEntry(val packageName: String, val frame: SurfaceFrame, val until: Long)
     @Volatile private var expectedEntry: ExpectedEntry? = null
-    /** First frames over a tapped icon, written into Shell's start transaction when the task appears. */
+    /** Main-pane frames written into Shell's start transaction when an icon-launched task appears. */
     private val entryPresentations = ConcurrentHashMap<Int, ActivePresentation>()
 
     /**
-     * The next task of [packageName] to appear shows its first frame over [source], the tapped icon.
-     * Shell's start transaction makes the task visible before the coordinator can present it;
-     * registering the frame in the task-appeared callback puts it into that same transaction.
+     * The next task of [packageName] to appear is shown in the main pane from its first frame. Shell's
+     * start transaction makes the task visible before the coordinator can present it; registering
+     * the frame in the task-appeared callback puts it into that same transaction, so no full-screen
+     * frame shows under the icon flying in the overlay.
      */
-    fun expectEntry(packageName: String, source: Rect, geometry: WorkspaceGeometry) {
-        if (source.isEmpty) return
-        expectedEntry = ExpectedEntry(packageName, entryFrame(source, sourceCrop(geometry)),
-            SystemClock.uptimeMillis() + ENTRY_EXPECTATION_MS)
+    fun expectEntry(packageName: String, geometry: WorkspaceGeometry) {
+        val frame = SurfaceFrame(geometry.mainScale, geometry.mainScale, geometry.mainTranslationX,
+            geometry.mainTranslationY, sourceCrop(geometry))
+        expectedEntry = ExpectedEntry(packageName, frame, SystemClock.uptimeMillis() + ENTRY_EXPECTATION_MS)
     }
 
     fun hasEntryPrepared(taskId: Int): Boolean = entryPresentations.containsKey(taskId)
@@ -130,7 +131,7 @@ object TaskSurfaceCompat {
         val frame = expected.frame
         entryPresentations[info.taskId] = ActivePresentation(info.taskId, leash, frame.scaleX, frame.scaleY,
             frame.positionX, frame.positionY, now + REAPPLY_WINDOW_MS, now, crop = frame.crop)
-        NeXtepLog.info("task_surface", "Entry frame prepared taskId=${info.taskId} over the icon")
+        NeXtepLog.info("task_surface", "Entry frame prepared taskId=${info.taskId} in the main pane")
     }
 
     fun observeTaskState(taskId: Int, state: TaskInfoCompat.WindowState) {
@@ -287,7 +288,7 @@ object TaskSurfaceCompat {
     fun hasPresentableSurface(taskId: Int, requireMainDisplay: Boolean = true): Boolean =
         findTaskLeash(taskId, requireMainDisplay)?.let(::isValid) == true
 
-    /** [source]: the screen rectangle of the icon the user tapped; the task grows out of it. */
+    /** [source]: the icon the user tapped; its flight covers the task, which lands in place at once. */
     fun present(taskId: Int, geometry: WorkspaceGeometry, source: Rect? = null): Result<Unit> = runCatching {
         require(taskId > 0) { "Invalid taskId=$taskId" }
         // Recovery polling must not restart the entry fade on an already presented task.
@@ -315,25 +316,19 @@ object TaskSurfaceCompat {
             crop = crop,
         )
         val prepared = preparedPresentations[taskId]
-        // The frame Shell showed the task with, if the task-appeared callback prepared one.
-        val shown = entryPresentations.remove(taskId)?.takeIf { it.leash === leash }?.frame
+        val shown = entryPresentations.remove(taskId) != null
         activePresentations[taskId] = presentation
         preparedPresentations.remove(taskId)
-        val entry = shown ?: source?.takeIf { !it.isEmpty }?.let { entryFrame(it, crop) }
-        if (prepared != null || (entry == null && geometry.navigationInsets != WorkspaceNavigationInsets())) {
-            // Promotion and recorded-button cold launches fit their native first
-            // frame already. Do not shrink it again with a second entry zoom.
+        if (prepared != null || shown || source != null || geometry.navigationInsets != WorkspaceNavigationInsets()) {
+            // Promotion and recorded-button cold launches fit their native first frame already,
+            // and an icon launch is covered by the flying icon. Do not shrink again with an entry zoom.
             applyPresentation(presentation)
         } else animatePresentation(
-            // Grow out of the tapped icon like the launcher does; without one, shrink from the
-            // full-screen task the user is looking at, in step with the panels.
+            // Shrink from the full-screen task the user is looking at, in step with the panels.
             taskId = taskId,
-            from = if (entry != null) presentation.copy(scaleX = entry.scaleX, scaleY = entry.scaleY,
-                positionX = entry.positionX, positionY = entry.positionY, crop = entry.crop)
-            else presentation.copy(scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f),
+            from = presentation.copy(scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f),
             to = presentation,
             fadeIn = true,
-            durationMs = if (entry != null) ENTRY_DURATION_MS else PRESENT_DURATION_MS,
         )
         NeXtepLog.info(
             "task_surface",
@@ -823,29 +818,10 @@ object TaskSurfaceCompat {
     private const val MIN_REAPPLY_INTERVAL_MS = 120L
     private const val STEADY_REAPPLY_INTERVAL_MS = 900L
     private const val PRESENT_DURATION_MS = 240L
-    /** With the app's own start-up before it, this lands close to the launcher's icon-to-window open. */
-    private const val ENTRY_DURATION_MS = 300L
     /** Covers the launch polling; an icon tap older than this no longer explains a new task. */
     private const val ENTRY_EXPECTATION_MS = 3_000L
     private const val REPOSITION_DURATION_MS = 260L
     private const val RESTORE_DURATION_MS = 180L
-}
-
-/**
- * The first frame of an entry from [source], an icon's screen rectangle: the task's [crop] is scaled
- * to the icon's width and a slice of it, centred and as tall as the icon, is placed over the icon.
- */
-internal fun entryFrame(source: Rect, crop: Rect): TaskSurfaceCompat.SurfaceFrame {
-    val scale = source.width().toFloat() / crop.width()
-    val sliceHeight = (source.height() / scale).coerceAtMost(crop.height().toFloat())
-    val sliceTop = crop.exactCenterY() - sliceHeight / 2f
-    val slice = Rect(crop.left, Math.round(sliceTop), crop.right, Math.round(sliceTop + sliceHeight))
-    return TaskSurfaceCompat.SurfaceFrame(
-        scale, scale,
-        source.left - crop.left * scale,
-        source.top - sliceTop * scale,
-        slice,
-    )
 }
 
 /**
