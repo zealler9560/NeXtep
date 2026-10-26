@@ -48,7 +48,7 @@ internal object SlotDiagnostics {
 
     private fun output(view: SurfaceView) =
         "att=${view.isAttachedToWindow} shown=${view.isShown} a=${view.alpha} ${view.width}x${view.height}" +
-            " win=${view.windowVisibility} surface=${view.holder.surface.isValid} layer=${view.surfaceControl?.isValid}"
+            " win=${view.windowVisibility} surface=${view.holder.surface?.isValid} layer=${view.surfaceControl?.isValid}"
 
     /** The task's own layers, captured apart from the pane: content here and none in the output is a display problem. */
     private fun layer(taskId: Int): String {
