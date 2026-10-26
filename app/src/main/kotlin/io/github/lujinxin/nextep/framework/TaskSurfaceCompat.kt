@@ -773,8 +773,8 @@ object TaskSurfaceCompat {
     private const val MIN_REAPPLY_INTERVAL_MS = 120L
     private const val STEADY_REAPPLY_INTERVAL_MS = 900L
     private const val PRESENT_DURATION_MS = 240L
-    /** Close to the launcher's own icon-to-window open. */
-    private const val ENTRY_DURATION_MS = 360L
+    /** With the app's own start-up before it, this lands close to the launcher's icon-to-window open. */
+    private const val ENTRY_DURATION_MS = 300L
     private const val REPOSITION_DURATION_MS = 260L
     private const val RESTORE_DURATION_MS = 180L
 }

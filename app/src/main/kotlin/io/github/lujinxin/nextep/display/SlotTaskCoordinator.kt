@@ -774,7 +774,13 @@ class SlotTaskCoordinator(
             ?: return Result.failure(IllegalArgumentException("App does not resolve to a launcher Activity"))
         val component = checkNotNull(normalized.component)
         val existing = taskRepository.findTaskForComponent(component, normalized.targetUser())
+        // An icon launch animates the leash itself; the system's own open transition would zoom
+        // the task from the screen centre at the same time, so it is switched off.
+        val fromIcon = normalized.sourceBounds != null
         normalized.sourceBounds?.let { mainTaskPresenter.expectEntryFrom(component.packageName, it) }
+        if (fromIcon) normalized.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        fun launchOptions() = (if (fromIcon) android.app.ActivityOptions.makeCustomAnimation(applicationContext, 0, 0)
+            else android.app.ActivityOptions.makeBasic()).apply { setLaunchDisplayId(Display.DEFAULT_DISPLAY) }
 
         return runTransition("open main component=$component") {
             val currentMain = taskRepository.foregroundTask()
@@ -799,12 +805,9 @@ class SlotTaskCoordinator(
             }
 
             if (existing != null) {
-                promoteExistingToMain(existing, ::minimizePreviousMain)
+                promoteExistingToMain(existing, ::minimizePreviousMain, if (fromIcon) launchOptions().toBundle() else null)
             } else {
-                val options = android.app.ActivityOptions.makeBasic().apply {
-                    setLaunchDisplayId(Display.DEFAULT_DISPLAY)
-                }
-                UserTargetedActivityLauncher.start(applicationContext, normalized, options.toBundle()).getOrThrow()
+                UserTargetedActivityLauncher.start(applicationContext, normalized, launchOptions().toBundle()).getOrThrow()
                 minimizePreviousMain()
                 val generation = mainSelectionGeneration
                 handler.postDelayed({

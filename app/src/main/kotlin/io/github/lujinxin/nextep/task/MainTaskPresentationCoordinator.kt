@@ -34,12 +34,11 @@ class MainTaskPresentationCoordinator(context: Context) {
         entrySource = EntrySource(packageName, Rect(source), SystemClock.uptimeMillis() + ENTRY_SOURCE_TTL_MS)
     }
 
-    private fun takeEntrySource(packageName: String): Rect? {
+    /** The source stays until a presentation succeeds: a cold task's first attempt may find no leash yet. */
+    private fun peekEntrySource(packageName: String): Rect? {
         val entry = entrySource ?: return null
         if (SystemClock.uptimeMillis() > entry.until) { entrySource = null; return null }
-        if (entry.packageName != packageName) return null
-        entrySource = null
-        return entry.bounds
+        return entry.bounds.takeIf { entry.packageName == packageName }
     }
 
     fun presentForeground(geometry: WorkspaceGeometry): Result<Unit> {
@@ -84,7 +83,7 @@ class MainTaskPresentationCoordinator(context: Context) {
 
         val main = mainGeometry(geometry)
         pendingRestores -= task.taskId
-        val source = takeEntrySource(task.component.packageName)
+        val source = peekEntrySource(task.component.packageName)
         if (presentedTaskId == task.taskId && activePresenter === surfacePresenter) {
             return applyMainBounds(task, geometry).mapCatching { surfacePresenter.reapply(task.taskId, main).getOrThrow() }
         }
@@ -96,6 +95,7 @@ class MainTaskPresentationCoordinator(context: Context) {
             surfacePresenter.present(task.taskId, main, source).getOrThrow()
         }
         if (surfaceResult.isSuccess) {
+            if (source != null) entrySource = null
             val previousTaskId = presentedTaskId
             val previousPresenter = activePresenter
             presentedTaskId = task.taskId
