@@ -100,11 +100,11 @@ runtimeProtocolVersion)` 应答才会继续。这套桌面侧应答在 ColorOS �
 
 ## 已知问题
 
-- **退出时画面回闪**：正在定位。已知 NeXtep 的
-  `workspace_display_transition` 钩子在 MIUI 的 `DefaultTransitionHandler`
-  上装不上（其不存在 `isAnimationsDisabledForAnyDisplay(TransitionInfo)`，
-  源模块中该钩子为 fail-open），退出闪动可能与此有关，也可能与桌面变换
-  还原时序有关；有诊断日志结论后会更新本节。
+- **退出时画面回闪**：已解决（2026-10-26 实测）。早期版本存在退出闪动，
+  在桌面变换改用本体精确公式（v2.2）后消失——近似公式下退出还原的比例/
+  位置与本体几何对不齐，应是闪动的来源；NeXtep 的
+  `workspace_display_transition` 钩子在 MIUI 上装不上（fail-open）与此
+  无关，退出过渡在澎湃上可正常完成。
 - 桌面变换为第一版参数（等比缩放 + 顶栏高度偏移），横屏与场景恢复
   （scene / HOME 相关附加字段）尚未验证。
 - 壁纸窗口不参与变换（保持全屏），为预期行为。
