@@ -2,7 +2,7 @@
   <img src="assets/panes-logo.png" alt="Panes icon" width="160">
 </p>
 
-<h1 align="center">Panes (格窗)</h1>
+<h1 align="center">Panes Workbench (格窗工作台)</h1>
 
 <p align="center">One window, several things at once.</p>
 
@@ -11,13 +11,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/ColorOS-17-1F5CDE?style=flat" alt="ColorOS 17">
+  <img src="https://img.shields.io/badge/ColorOS-16%20%7C%2017-1F5CDE?style=flat" alt="ColorOS 16 | 17">
   <img src="https://img.shields.io/github/v/release/yishisanren/NeXtep?display_name=tag&sort=semver" alt="Latest release">
   <img src="https://img.shields.io/badge/LSPosed-Required-C62828?style=flat" alt="LSPosed required">
   <img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat" alt="Apache-2.0">
 </p>
 
-Panes is an LSPosed module that adds a side workspace to the stock ColorOS 17 launcher: one main window to work in, four live panes waiting beside it, and the things you use most within reach. It does not replace the launcher or restyle the system; leave the workspace and the phone is as it was.
+Panes Workbench is an LSPosed module that adds a side workspace to the stock ColorOS 16 and 17 launcher: one main window to work in, four live panes waiting beside it, and the things you use most within reach. It does not replace the launcher or restyle the system; leave the workspace and the phone is as it was.
 
 <p align="center">
   <img src="assets/readme/overview.gif" alt="A diagonal swipe from a bottom corner opens the workspace, another one closes it" width="300">
@@ -97,14 +97,14 @@ The workspace follows the system's light and dark mode, or stays light or dark. 
 
 ## Requirements
 
-- ColorOS 17 (Android 17). Developed and verified on the OPPO Find X9s Pro (PME110); other devices and ROMs need their own adaptation and are untested.
+- ColorOS 16 and 17. Tested on OPPO, OnePlus and realme phones; other ROMs need their own adaptation and are untested.
 - Root (KernelSU or similar), Zygisk and LSPosed with the modern libxposed API.
 - The module changes SystemUI, launcher and system_server behaviour. Keep a recovery path for the device.
 
 ## Install
 
 1. Download the APK from [Releases](https://github.com/yishisanren/NeXtep/releases) and install it (package `io.github.yishisanren.panes`).
-2. Enable "格窗 Panes" in LSPosed and tick every entry of the built-in [scope list](app/src/main/resources/META-INF/xposed/scope.list) that exists on your device: SystemUI, the framework, the launcher, the app-cloning service and the assistant screen.
+2. Enable "格窗工作台 (Panes Workbench)" in LSPosed and tick every entry of the built-in [scope list](app/src/main/resources/META-INF/xposed/scope.list) that exists on your device: SystemUI, the framework, the launcher, the app-cloning service and the assistant screen.
 3. If NeXtep (`io.github.lujinxin.nextep`) is installed, disable and uninstall it first; two modules must not hook SystemUI at once.
 4. Reboot.
 5. Open Panes, pick favourite apps and add the Quick Settings tile.
@@ -112,7 +112,7 @@ The workspace follows the system's light and dark mode, or stays light or dark. 
 ## Open and close
 
 - **Bottom-corner gesture:** one finger from the bottom-left corner towards the upper right, or from the bottom-right corner towards the upper left, opens the workspace; the same swipe inside the workspace closes it. Start within 64 dp of the bottom and side edges and move at least 24 dp inward and upward along a roughly 45° diagonal; a swipe up, straight or slightly slanted (system home), or a horizontal swipe (system back) does not trigger it.
-- **Quick Settings tile:** add it from Settings → Opening the workspace → Quick Settings shortcut, then toggle "Panes" in Quick Settings.
+- **Quick Settings tile:** add it from Settings → Opening the workspace → Quick Settings shortcut, then toggle "Panes Workbench" in Quick Settings.
 - **Settings:** Troubleshooting → Exit small-window mode.
 - **Shell commands** for automation tools (root): see [docs/WORKBENCH.md](docs/WORKBENCH.md).
 

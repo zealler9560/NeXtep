@@ -3,7 +3,7 @@
     <string name="app_name">격자창</string>
     <string name="navigation_settings">설정</string>
     <string name="navigation_about">앱 정보</string>
-    <string name="module_description">ColorOS 17 기본 런처에 측면 작업 공간을 추가하는 LSPosed 모듈</string>
+    <string name="module_description">ColorOS 16 및 17을 지원하는 측면 작업 공간 LSPosed 모듈, OPPO·OnePlus·realme에서 테스트됨</string>
     <string name="tile_unavailable">런처 확인 후크가 아직 준비되지 않았습니다</string>
     <string name="action_add">추가</string>
     <string name="tile_add_description">빠른 설정에 격자창 추가</string>

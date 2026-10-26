@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">格窗</string>
+    <string name="app_name">格窗工作台</string>
     <string name="navigation_settings">设置</string>
     <string name="navigation_about">关于</string>
-    <string name="module_description">ColorOS 17 原生侧边工作区 LSPosed 模块</string>
+    <string name="module_description">兼容 ColorOS 16 和 17 的原生侧边工作台 LSPosed 模块，已在 OPPO、一加、realme 上测试</string>
     <string name="tile_unavailable">桌面验证钩子尚未就绪</string>
     <string name="action_add">添加</string>
     <string name="tile_add_description">添加 格窗 到控制中心</string>
