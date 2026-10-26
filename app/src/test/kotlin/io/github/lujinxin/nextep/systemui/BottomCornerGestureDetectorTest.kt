@@ -86,14 +86,29 @@ class BottomCornerGestureDetectorTest {
     }
 
     @Test fun diagonalSlopeLimitsAreAcceptedButFlatPathsAreNot() {
-        for ((dx, dy) in listOf(24f to 38f, 38f to 24f)) {
+        // 21° and 60° from horizontal are inside the band; 17° and 65° are outside it.
+        for ((dx, dy) in listOf(24f to 38f, 38f to 24f, 70f to 27f, 24f to 41f)) {
             val t = Trace()
             t.event(0, 20f, 880f)
             assertEquals(CONFIRMED, t.event(2, 20f + dx, 880f - dy))
         }
+        for ((dx, dy) in listOf(80f to 24f, 24f to 52f)) {
+            val t = Trace()
+            t.event(0, 20f, 880f)
+            assertEquals(OBSERVING, t.event(2, 20f + dx, 880f - dy))
+            assertEquals(ABANDONED, t.event(1, 20f + dx, 880f - dy))
+        }
         val t = Trace()
         t.event(0, 20f, 880f)
-        assertEquals(ABANDONED, t.event(1, 100f, 850f))
+        assertEquals(ABANDONED, t.event(1, 100f, 868f))
+    }
+
+    @Test fun aPathThatStartsFlatAndLiftsLaterConfirms() {
+        // Right corner, from the recording: 78 in and 20 up, then the thumb rolls upward.
+        val t = Trace()
+        t.event(0, 380f, 880f)
+        assertEquals(OBSERVING, t.event(2, 302f, 860f, 150L))
+        assertEquals(CONFIRMED, t.event(2, 240f, 820f, 250L))
     }
 
     @Test fun aHomeSwipeLeaningOffVerticalFromTheCornerNeverCloses() {

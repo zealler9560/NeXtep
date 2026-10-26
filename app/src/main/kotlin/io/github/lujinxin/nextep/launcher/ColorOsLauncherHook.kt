@@ -68,6 +68,12 @@ object ColorOsLauncherHook {
                         if (!WorkspaceLauncherAnimationPolicy.useStaticSource(
                                 LauncherTransformController.isActive(), intent)) return chain.proceed()
                         val args = chain.args.toTypedArray()
+                        // Launcher3 records the icon's bounds only with a source view; SystemUI flies
+                        // its own copy of the icon out of them instead, and the desktop icon leaves.
+                        (args[0] as? View)?.takeIf { it.width > 0 && it.isAttachedToWindow }?.let { icon ->
+                            intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
+                            liftIcon(icon)
+                        }
                         args[0] = null
                         return chain.proceed(args)
                     }
@@ -235,6 +241,13 @@ class AssistantViewRootHooker : XposedInterface.Hooker {
 }
 
 private const val ASSISTANT_SCREEN_PACKAGE = "com.coloros.assistantscreen"
+
+/** The desktop icon leaves while SystemUI's copy of it flies to the pane; it comes back under the opened task. */
+private fun liftIcon(icon: View) {
+    icon.animate().cancel()
+    icon.alpha = 0f
+    icon.postDelayed({ icon.alpha = 1f }, 900L)
+}
 
 class LauncherStartActivityHooker : XposedInterface.Hooker {
     override fun intercept(chain: XposedInterface.Chain): Any? {

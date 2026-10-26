@@ -37,6 +37,8 @@ class SlotTaskCoordinator(
     private val onContentDragEntered: (Int) -> Unit = {},
     private val onContentDragEnded: (Boolean) -> Unit = {},
     private val pauseRules: SlotPauseRules? = null,
+    /** An app launched from an icon at this screen rectangle: the window controller flies the icon. */
+    private val onIconLaunch: (ComponentName, Rect) -> Unit = { _, _ -> },
     /** Any app that takes over the main pane sends the previous main app into an empty slot. */
     private val autoMinimizeMain: () -> Boolean = { false },
 ) : VirtualDisplaySlot.Listener, TaskSwitcherView.Listener {
@@ -774,6 +776,15 @@ class SlotTaskCoordinator(
             ?: return Result.failure(IllegalArgumentException("App does not resolve to a launcher Activity"))
         val component = checkNotNull(normalized.component)
         val existing = taskRepository.findTaskForComponent(component, normalized.targetUser())
+        // An icon launch animates the leash itself; the system's own open transition would zoom
+        // the task from the screen centre at the same time, so it becomes a fade.
+        val fromIcon = normalized.sourceBounds != null
+        normalized.sourceBounds?.let {
+            mainTaskPresenter.expectEntryFrom(component.packageName, it, geometryProvider())
+            onIconLaunch(component, it)
+        }
+        fun launchOptions() = (if (fromIcon) iconLaunchAnimation() else android.app.ActivityOptions.makeBasic())
+            .apply { setLaunchDisplayId(Display.DEFAULT_DISPLAY) }
 
         return runTransition("open main component=$component") {
             val currentMain = taskRepository.foregroundTask()
@@ -798,12 +809,9 @@ class SlotTaskCoordinator(
             }
 
             if (existing != null) {
-                promoteExistingToMain(existing, ::minimizePreviousMain)
+                promoteExistingToMain(existing, ::minimizePreviousMain, if (fromIcon) launchOptions().toBundle() else null)
             } else {
-                val options = android.app.ActivityOptions.makeBasic().apply {
-                    setLaunchDisplayId(Display.DEFAULT_DISPLAY)
-                }
-                UserTargetedActivityLauncher.start(applicationContext, normalized, options.toBundle()).getOrThrow()
+                UserTargetedActivityLauncher.start(applicationContext, normalized, launchOptions().toBundle()).getOrThrow()
                 minimizePreviousMain()
                 val generation = mainSelectionGeneration
                 handler.postDelayed({
@@ -813,6 +821,19 @@ class SlotTaskCoordinator(
             }
         }
     }
+
+    /**
+     * The task fades in over its own icon zoom while the desktop fades out under it. Switching the
+     * transition off instead ended it at once, and WM hid the desktop behind the still icon-sized task.
+     */
+    private fun iconLaunchAnimation(): android.app.ActivityOptions = android.app.ActivityOptions
+        .makeCustomAnimation(applicationContext, android.R.anim.fade_in, android.R.anim.fade_out).also { options ->
+            // Shell applies a custom animation to task-level changes only with this hidden switch.
+            runCatching {
+                android.app.ActivityOptions::class.java.getMethod("setOverrideTaskTransition", Boolean::class.javaPrimitiveType)
+                    .invoke(options, true)
+            }.onFailure { NeXtepLog.warn("top_apps", "Task transition override unavailable", it) }
+        }
 
     /** A slot with nothing in it or on its way to it, or -1. */
     private fun emptySlot(tasks: List<TaskRepository.TaskSnapshot>): Int = slotRecords.indexOfFirst { record ->

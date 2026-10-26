@@ -2,6 +2,7 @@ package io.github.lujinxin.nextep.task
 
 import android.content.Context
 import android.graphics.Rect
+import android.os.SystemClock
 import android.view.Display
 import io.github.lujinxin.nextep.framework.ActivityTaskManagerCompat
 import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
@@ -24,6 +25,26 @@ class MainTaskPresentationCoordinator(context: Context) {
     /** An app hiding the status bar draws content at its top, so it is shown whole instead of cropped. */
     private fun mainGeometry(geometry: WorkspaceGeometry) = if (statusBarHidden()) geometry.uncropped() else geometry
     private var homePresented = false
+
+    private class EntrySource(val packageName: String, val bounds: Rect, val since: Long, val until: Long)
+    private var entrySource: EntrySource? = null
+
+    /** Called once the task launched from an icon is in place, so the flying icon can fade away. */
+    var onEntryPresented: (() -> Unit)? = null
+
+    /** The next task of [packageName] to be presented was launched from [source], the icon the user tapped. */
+    fun expectEntryFrom(packageName: String, source: Rect, geometry: WorkspaceGeometry) {
+        val now = SystemClock.uptimeMillis()
+        entrySource = EntrySource(packageName, Rect(source), now, now + ENTRY_SOURCE_TTL_MS)
+        TaskSurfaceCompat.expectEntry(packageName, mainGeometry(geometry))
+    }
+
+    /** The source stays until a presentation succeeds: a cold task's first attempt may find no leash yet. */
+    private fun peekEntrySource(packageName: String): EntrySource? {
+        val entry = entrySource ?: return null
+        if (SystemClock.uptimeMillis() > entry.until) { entrySource = null; return null }
+        return entry.takeIf { it.packageName == packageName }
+    }
 
     fun presentForeground(geometry: WorkspaceGeometry): Result<Unit> {
         val task = taskRepository.foregroundTask()
@@ -67,17 +88,31 @@ class MainTaskPresentationCoordinator(context: Context) {
 
         val main = mainGeometry(geometry)
         pendingRestores -= task.taskId
+        val entry = peekEntrySource(task.component.packageName)
+        val source = entry?.bounds
         if (presentedTaskId == task.taskId && activePresenter === surfacePresenter) {
             return applyMainBounds(task, geometry).mapCatching { surfacePresenter.reapply(task.taskId, main).getOrThrow() }
+        }
+        if (entry != null && !TaskSurfaceCompat.hasObservedLeash(task.taskId) &&
+            SystemClock.uptimeMillis() - entry.since < ENTRY_WAIT_MS
+        ) {
+            // Shell has not shown the task yet; its callback brings the next attempt. A lookup
+            // through the organizer and a live task query now would only burn binder time.
+            return Result.failure(IllegalStateException("Task ${task.taskId} has not appeared in Shell yet"))
         }
 
         // Fullscreen tasks inherit display bounds. Explicit screen-sized bounds survive
         // rotation and can leave a portrait Activity confined to the old landscape area.
         homePresented = false
-        val surfaceResult = applyMainBounds(task, geometry).mapCatching {
-            surfacePresenter.present(task.taskId, main).getOrThrow()
+        val fresh = entry != null && TaskSurfaceCompat.hasEntryPrepared(task.taskId)
+        val surfaceResult = applyMainBounds(task, geometry, fresh).mapCatching {
+            surfacePresenter.present(task.taskId, main, source).getOrThrow()
         }
         if (surfaceResult.isSuccess) {
+            if (source != null) {
+                entrySource = null
+                onEntryPresented?.invoke()
+            }
             val previousTaskId = presentedTaskId
             val previousPresenter = activePresenter
             presentedTaskId = task.taskId
@@ -206,12 +241,14 @@ class MainTaskPresentationCoordinator(context: Context) {
      * Under a wide picture the main app is laid out at the shortened canvas so it shares the rail
      * cards' aspect; otherwise any override is cleared as before.
      */
-    private fun applyMainBounds(task: TaskRepository.TaskSnapshot, geometry: WorkspaceGeometry): Result<Unit> {
+    private fun applyMainBounds(task: TaskRepository.TaskSnapshot, geometry: WorkspaceGeometry,
+                                fresh: Boolean = false): Result<Unit> {
         val height = geometry.mainTaskHeight
         if (height <= 0) {
             if (shortenedTaskId == task.taskId) shortenedTaskId = null
-            return clearFullscreenBounds(task)
+            return clearFullscreenBounds(task, fresh)
         }
+        clearedBoundsTaskId = null
         if (task.vendorWindowed || task.displayId != Display.DEFAULT_DISPLAY) return Result.success(Unit)
         val bounds = Rect(0, geometry.mainTaskTop, geometry.screenWidth, geometry.screenHeight)
         // A move into the main pane carries these bounds already.
@@ -230,12 +267,20 @@ class MainTaskPresentationCoordinator(context: Context) {
         onHomePresented?.invoke()
     }
 
+    /** The task whose override this presentation already cleared; clearing again only costs the app a relayout. */
+    private var clearedBoundsTaskId: Int? = null
+
     private fun clearFullscreenBounds(
         task: TaskRepository.TaskSnapshot,
+        fresh: Boolean = false,
     ): Result<Unit> {
         // The display-move owner already cleared the fullscreen override during
         // layout restoration. Do not request a second layout after the move.
         if (TaskSurfaceCompat.hasPreparedPromotion(task.taskId)) return Result.success(Unit)
+        // A task that just appeared for an icon launch has no override; neither does one this
+        // presentation cleared already. Either relayout would land on the app's first frames.
+        if (fresh) { clearedBoundsTaskId = task.taskId; return Result.success(Unit) }
+        if (clearedBoundsTaskId == task.taskId && presentedTaskId == task.taskId) return Result.success(Unit)
         val fullscreenMode = ActivityTaskManagerCompat
             .resolveWindowingMode("WINDOWING_MODE_FULLSCREEN")
             ?: WINDOWING_MODE_FULLSCREEN
@@ -249,13 +294,17 @@ class MainTaskPresentationCoordinator(context: Context) {
         )
         // Empty bounds remove the override, including when the resolved bounds already
         // equal the display. Comparing resolved bounds cannot detect a stale override.
-        return task.token?.let { token ->
+        return (task.token?.let { token ->
             WindowContainerTransactionCompat.applyTaskBounds(token, Rect())
-        } ?: ActivityTaskManagerCompat.resizeTask(task.taskId, Rect())
+        } ?: ActivityTaskManagerCompat.resizeTask(task.taskId, Rect())).onSuccess { clearedBoundsTaskId = task.taskId }
     }
 
     private companion object {
         const val WINDOWING_MODE_FULLSCREEN = 1
+        /** How long an icon launch waits for Shell's task-appeared callback before looking the task up itself. */
+        const val ENTRY_WAIT_MS = 1_500L
+        /** Covers the launch polling; an icon tap older than this no longer explains a new task. */
+        const val ENTRY_SOURCE_TTL_MS = 3_000L
     }
 
     private fun isMainFullscreen(task: TaskRepository.TaskSnapshot): Boolean =

@@ -477,7 +477,12 @@ class TopAppStripView(
                 LinearLayout.LayoutParams(dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP), dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP)),
             )
             layoutParams = LinearLayout.LayoutParams(dp(APP_TILE_WIDTH_DP * rowScale), LayoutParams.MATCH_PARENT)
-            setOnClickListener { onAppClicked(Intent(entry.launchIntent)) }
+            setOnClickListener {
+                val at = IntArray(2).also(icon::getLocationOnScreen)
+                onAppClicked(Intent(entry.launchIntent).apply {
+                    sourceBounds = android.graphics.Rect(at[0], at[1], at[0] + icon.width, at[1] + icon.height)
+                })
+            }
             setOnLongClickListener { tile ->
                 val started = onAppDragStarting(tile, Intent(entry.launchIntent))
                 internalAppDragActive = started

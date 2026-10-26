@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
  * matching the reference OneStep implementation and avoiding ColorOS freeform re-layout.
  */
 object TaskSurfaceCompat {
-    private data class SurfaceFrame(
+    internal data class SurfaceFrame(
         val scaleX: Float,
         val scaleY: Float,
         val positionX: Float,
@@ -73,7 +73,8 @@ object TaskSurfaceCompat {
     private val presentationAnimators = ConcurrentHashMap<Int, ValueAnimator>()
     private val transactionGuard = SurfaceTransactionGuard<Any>(
         appendOwnedTransforms = ::appendOwnedTransforms,
-        shouldCompose = { activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() || slotSurfaces.isNotEmpty() },
+        shouldCompose = { activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() ||
+            entryPresentations.isNotEmpty() || slotSurfaces.isNotEmpty() },
         onFailure = { NeXtepLog.warn("task_surface", "Native transaction fitting failed open", it) },
     )
 
@@ -94,8 +95,46 @@ object TaskSurfaceCompat {
 
     fun observeTaskInfo(info: ActivityManager.RunningTaskInfo, leash: Any? = null) {
         TaskInfoCompat.readWindowState(info)?.let { observeTaskState(info.taskId, it) }
-        if (leash != null) observedLeashes[info.taskId] = leash
+        if (leash != null) {
+            observedLeashes[info.taskId] = leash
+            prepareEntry(info, leash)
+        }
         taskChangeListener?.invoke()
+    }
+
+    private class ExpectedEntry(val packageName: String, val frame: SurfaceFrame, val until: Long)
+    @Volatile private var expectedEntry: ExpectedEntry? = null
+    /** Main-pane frames written into Shell's start transaction when an icon-launched task appears. */
+    private val entryPresentations = ConcurrentHashMap<Int, ActivePresentation>()
+
+    /**
+     * The next task of [packageName] to appear is shown in the main pane from its first frame. Shell's
+     * start transaction makes the task visible before the coordinator can present it; registering
+     * the frame in the task-appeared callback puts it into that same transaction, so no full-screen
+     * frame shows under the icon flying in the overlay.
+     */
+    fun expectEntry(packageName: String, geometry: WorkspaceGeometry) {
+        val frame = SurfaceFrame(geometry.mainScale, geometry.mainScale, geometry.mainTranslationX,
+            geometry.mainTranslationY, sourceCrop(geometry))
+        expectedEntry = ExpectedEntry(packageName, frame, SystemClock.uptimeMillis() + ENTRY_EXPECTATION_MS)
+    }
+
+    fun hasEntryPrepared(taskId: Int): Boolean = entryPresentations.containsKey(taskId)
+
+    /** Shell has reported the task with its leash; cheap, unlike a lookup through the organizer. */
+    fun hasObservedLeash(taskId: Int): Boolean = observedLeashes.containsKey(taskId)
+
+    private fun prepareEntry(info: ActivityManager.RunningTaskInfo, leash: Any) {
+        val expected = expectedEntry ?: return
+        val now = SystemClock.uptimeMillis()
+        if (now > expected.until) { expectedEntry = null; return }
+        val packageName = info.baseIntent?.component?.packageName ?: info.topActivity?.packageName ?: return
+        if (packageName != expected.packageName) return
+        expectedEntry = null
+        val frame = expected.frame
+        entryPresentations[info.taskId] = ActivePresentation(info.taskId, leash, frame.scaleX, frame.scaleY,
+            frame.positionX, frame.positionY, now + REAPPLY_WINDOW_MS, now, crop = frame.crop)
+        NeXtepLog.info("task_surface", "Entry frame prepared taskId=${info.taskId} in the main pane")
     }
 
     fun observeTaskState(taskId: Int, state: TaskInfoCompat.WindowState) {
@@ -111,6 +150,7 @@ object TaskSurfaceCompat {
         observedStates.remove(taskId)
         observedLeashes.remove(taskId)
         slotSurfaces.remove(taskId)
+        entryPresentations.remove(taskId)
         taskChangeListener?.invoke()
         // An OEM reparent may vanish/reappear with a replacement leash. Preserve
         // the target transform until reapply binds that leash or the owner restores
@@ -251,7 +291,8 @@ object TaskSurfaceCompat {
     fun hasPresentableSurface(taskId: Int, requireMainDisplay: Boolean = true): Boolean =
         findTaskLeash(taskId, requireMainDisplay)?.let(::isValid) == true
 
-    fun present(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> = runCatching {
+    /** [source]: the icon the user tapped; its flight covers the task, which lands in place at once. */
+    fun present(taskId: Int, geometry: WorkspaceGeometry, source: Rect? = null): Result<Unit> = runCatching {
         require(taskId > 0) { "Invalid taskId=$taskId" }
         // Recovery polling must not restart the entry fade on an already presented task.
         if (activePresentations.containsKey(taskId)) {
@@ -265,6 +306,7 @@ object TaskSurfaceCompat {
         val scaleX = geometry.mainScale
         val scaleY = scaleX
         val now = SystemClock.uptimeMillis()
+        val crop = sourceCrop(geometry)
         val presentation = ActivePresentation(
             taskId = taskId,
             leash = leash,
@@ -274,14 +316,15 @@ object TaskSurfaceCompat {
             positionY = geometry.mainTranslationY,
             reapplyUntil = now + REAPPLY_WINDOW_MS,
             lastAppliedAt = now,
-            crop = sourceCrop(geometry),
+            crop = crop,
         )
         val prepared = preparedPresentations[taskId]
+        val shown = entryPresentations.remove(taskId) != null
         activePresentations[taskId] = presentation
         preparedPresentations.remove(taskId)
-        if (prepared != null || geometry.navigationInsets != WorkspaceNavigationInsets()) {
-            // Promotion and recorded-button cold launches fit their native first
-            // frame already. Do not shrink it again with a second entry zoom.
+        if (prepared != null || shown || source != null || geometry.navigationInsets != WorkspaceNavigationInsets()) {
+            // Promotion and recorded-button cold launches fit their native first frame already,
+            // and an icon launch is covered by the flying icon. Do not shrink again with an entry zoom.
             applyPresentation(presentation)
         } else animatePresentation(
             // Shrink from the full-screen task the user is looking at, in step with the panels.
@@ -293,7 +336,7 @@ object TaskSurfaceCompat {
         NeXtepLog.info(
             "task_surface",
             "Presented taskId=$taskId scale=$scaleX,$scaleY " +
-                "position=${geometry.contentLeft},${geometry.contentTop}",
+                "position=${geometry.contentLeft},${geometry.contentTop} from=$source",
         )
     }.onFailure { error ->
         NeXtepLog.error("task_surface", "Presentation failed taskId=$taskId", error)
@@ -359,8 +402,9 @@ object TaskSurfaceCompat {
     fun restore(taskId: Int, animated: Boolean = false): Result<Unit> = runCatching {
         // Remove ownership before cancellation so no final frame can revive the transform.
         val pending = preparedPresentations.remove(taskId)
+        val shown = entryPresentations.remove(taskId)
         val previous = activePresentations.remove(taskId)
-        val leash = previous?.leash ?: pending?.leash ?: return@runCatching
+        val leash = previous?.leash ?: pending?.leash ?: shown?.leash ?: return@runCatching
         cancelPresentationAnimation(taskId)
         if (!isValid(leash)) {
             NeXtepLog.warn(
@@ -421,7 +465,7 @@ object TaskSurfaceCompat {
             scaleY = from.scaleY,
             positionX = from.positionX,
             positionY = from.positionY,
-            crop = to.crop,
+            crop = lerp(from.crop, to.crop, 0f),
         )
         val animator = ValueAnimator.ofFloat(0f, 1f)
         animator.duration = durationMs
@@ -440,7 +484,7 @@ object TaskSurfaceCompat {
                     scaleY = lerp(from.scaleY, to.scaleY, progress),
                     positionX = lerp(from.positionX, to.positionX, progress),
                     positionY = lerp(from.positionY, to.positionY, progress),
-                    crop = to.crop,
+                    crop = lerp(from.crop, to.crop, progress),
                 )
             }.onFailure { error ->
                 valueAnimator.cancel()
@@ -478,6 +522,15 @@ object TaskSurfaceCompat {
     private fun lerp(start: Float, end: Float, progress: Float): Float =
         start + (end - start) * progress
 
+    /** A crop only moves when both ends have one; a vanishing crop lifts at once. */
+    private fun lerp(from: Rect?, to: Rect?, progress: Float): Rect? =
+        if (from == null || to == null) to else Rect(
+            Math.round(lerp(from.left.toFloat(), to.left.toFloat(), progress)),
+            Math.round(lerp(from.top.toFloat(), to.top.toFloat(), progress)),
+            Math.round(lerp(from.right.toFloat(), to.right.toFloat(), progress)),
+            Math.round(lerp(from.bottom.toFloat(), to.bottom.toFloat(), progress)),
+        )
+
     private fun applyPresentation(
         taskId: Int,
         leash: Any,
@@ -505,6 +558,17 @@ object TaskSurfaceCompat {
         // between polling corrections. Use the current animation frame, not its final target.
         activePresentations.values.forEach { presentation ->
             if (activePresentations[presentation.taskId] !== presentation ||
+                ownedTaskLeash(presentation.taskId) !== presentation.leash ||
+                !isValid(presentation.leash)
+            ) return@forEach
+            writeFrame(transaction, presentation.leash, presentation.frame)
+        }
+        entryPresentations.values.forEach { presentation ->
+            if (SystemClock.uptimeMillis() > presentation.reapplyUntil) {
+                entryPresentations.remove(presentation.taskId, presentation)
+                return@forEach
+            }
+            if (entryPresentations[presentation.taskId] !== presentation ||
                 ownedTaskLeash(presentation.taskId) !== presentation.leash ||
                 !isValid(presentation.leash)
             ) return@forEach
@@ -757,6 +821,8 @@ object TaskSurfaceCompat {
     private const val MIN_REAPPLY_INTERVAL_MS = 120L
     private const val STEADY_REAPPLY_INTERVAL_MS = 900L
     private const val PRESENT_DURATION_MS = 240L
+    /** Covers the launch polling; an icon tap older than this no longer explains a new task. */
+    private const val ENTRY_EXPECTATION_MS = 3_000L
     private const val REPOSITION_DURATION_MS = 260L
     private const val RESTORE_DURATION_MS = 180L
 }
