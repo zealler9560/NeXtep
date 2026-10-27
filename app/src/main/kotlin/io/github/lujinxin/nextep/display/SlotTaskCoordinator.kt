@@ -472,7 +472,10 @@ class SlotTaskCoordinator(
         if (!active || pauseRules == null) return
         slotRecords.forEachIndexed { index, record ->
             val occupied = record.state as? SlotState.Occupied ?: return@forEachIndexed
-            if (slots[index].isPaused() &&
+            // A slot scrolled out of the window stays paused regardless of the chosen-apps
+            // list; evaluatePause will re-check it with offscreenBlocker when the pause check
+            // fires, and setSlotOffscreen resumes it when it scrolls back into view.
+            if (!scrolledAway[index] && slots[index].isPaused() &&
                 pauseRules.blocker(index, occupied.component.packageName) == SlotPauseRules.NOT_CHOSEN) {
                 slots[index].resume("choice changed")
             }
