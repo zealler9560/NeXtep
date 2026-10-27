@@ -27,15 +27,38 @@ object NeXtepLog {
         onEvent = {
             if (mirrorPending.compareAndSet(false, true)) handler.postDelayed({
                 mirrorPending.set(false)
-                runCatching { android.provider.Settings.Global.putString(context.contentResolver, key, recent(count)) }
-                    .onFailure { Log.w(TAG, "Event mirror $key failed: $it") }
+                val text = recent(count)
+                runCatching { android.provider.Settings.Global.putString(context.contentResolver, key, text) }.onFailure {
+                    // Without the settings permission, hand them to SystemUI directly.
+                    Log.w(TAG, "Event mirror $key failed: $it")
+                    runCatching { context.sendBroadcast(android.content.Intent(ACTION_MIRROR).setPackage(SYSTEM_UI)
+                        .putExtra(EXTRA_KEY, key).putExtra(EXTRA_TEXT, text.takeLast(MAX_MIRROR_CHARS))) }
+                }
             }, 1_000L)
         }
         onEvent?.invoke()
     }
 
     fun mirrored(context: android.content.Context, key: String): String? =
-        runCatching { android.provider.Settings.Global.getString(context.contentResolver, key) }.getOrNull()
+        received[key] ?: runCatching { android.provider.Settings.Global.getString(context.contentResolver, key) }.getOrNull()
+
+    private val received = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** SystemUI side of the broadcast fallback; only known keys, bounded, kept for the export. */
+    fun receiveMirrors(context: android.content.Context) {
+        context.registerReceiver(object : android.content.BroadcastReceiver() {
+            override fun onReceive(receiverContext: android.content.Context?, intent: android.content.Intent) {
+                val key = intent.getStringExtra(EXTRA_KEY)?.takeIf { it == LAUNCHER_EVENTS_KEY || it == SYSTEM_SERVER_EVENTS_KEY } ?: return
+                received[key] = intent.getStringExtra(EXTRA_TEXT).orEmpty().takeLast(MAX_MIRROR_CHARS)
+            }
+        }, android.content.IntentFilter(ACTION_MIRROR), android.content.Context.RECEIVER_EXPORTED)
+    }
+
+    private const val ACTION_MIRROR = "io.github.yishisanren.panes.action.MIRROR_EVENTS"
+    private const val EXTRA_KEY = "key"
+    private const val EXTRA_TEXT = "text"
+    private const val SYSTEM_UI = "com.android.systemui"
+    private const val MAX_MIRROR_CHARS = 32_000
 
     const val SYSTEM_SERVER_EVENTS_KEY = "nextep_system_server_events_v1"
     const val LAUNCHER_EVENTS_KEY = "nextep_launcher_events_v1"

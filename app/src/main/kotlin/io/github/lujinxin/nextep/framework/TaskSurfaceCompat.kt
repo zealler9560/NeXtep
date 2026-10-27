@@ -73,14 +73,48 @@ object TaskSurfaceCompat {
     private val presentationAnimators = ConcurrentHashMap<Int, ValueAnimator>()
     private val transactionGuard = SurfaceTransactionGuard<Any>(
         appendOwnedTransforms = ::appendOwnedTransforms,
-        shouldCompose = { activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() ||
+        shouldCompose = { shellMayWrite() && (activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() ||
             liftedRoots.isNotEmpty() || wallpaperResets.isNotEmpty() ||
-            entryPresentations.isNotEmpty() || slotSurfaces.isNotEmpty() },
+            entryPresentations.isNotEmpty() || slotSurfaces.isNotEmpty()) },
         onFailure = { NeXtepLog.warn("task_surface", "Native transaction fitting failed open", it) },
     )
 
-    fun <R> interceptTransactionApply(transaction: Any, proceed: () -> R): R =
-        transactionGuard.intercept(transaction, proceed)
+    fun <R> interceptTransactionApply(transaction: Any, proceed: () -> R): R {
+        countApply()
+        return transactionGuard.intercept(transaction, proceed)
+    }
+
+    @Volatile private var shellBusyUntil = 0L
+
+    /** Shell is about to write task leashes: a transition plays, or the organizer reports a task. */
+    fun markShellBusy() {
+        shellBusyUntil = SystemClock.uptimeMillis() + SHELL_BUSY_MS
+    }
+
+    /**
+     * Shell writes task leashes only in transitions and task callbacks. HyperOS's SystemUI applies
+     * transactions every frame for its own blur and panels; re-writing the pane transform into each
+     * dirtied the big task layers and recomposed them, frame after frame. There, compose only
+     * while Shell may write. ColorOS keeps the proven every-commit fitting.
+     */
+    private fun shellMayWrite(): Boolean = !desktopScaledHere || liftedRoots.isNotEmpty() ||
+        wallpaperResets.isNotEmpty() || SystemClock.uptimeMillis() < shellBusyUntil
+
+    private val applies = java.util.concurrent.atomic.AtomicInteger()
+    private val composed = java.util.concurrent.atomic.AtomicInteger()
+    @Volatile private var appliesSince = 0L
+
+    /** One line per ten seconds of commits while the pane shows: how many paid for fitting. */
+    private fun countApply() {
+        if (activePresentations.isEmpty()) return
+        applies.incrementAndGet()
+        val now = SystemClock.uptimeMillis()
+        if (appliesSince == 0L) appliesSince = now
+        if (now - appliesSince < STATS_WINDOW_MS) return
+        appliesSince = now
+        NeXtepLog.info("task_surface_transaction_guard", "Fitted ${composed.getAndSet(0)} of ${applies.getAndSet(0)} " +
+            "SystemUI commits in ${STATS_WINDOW_MS / 1000}s gated=$desktopScaledHere")
+    }
 
     /** SystemUI, not a module in the launcher's process, scales the desktop (HyperOS). */
     @Volatile var desktopScaledHere = false
@@ -170,6 +204,7 @@ object TaskSurfaceCompat {
     @Volatile var taskChangeListener: (() -> Unit)? = null
 
     fun observeTaskInfo(info: ActivityManager.RunningTaskInfo, leash: Any? = null) {
+        markShellBusy()
         TaskInfoCompat.readWindowState(info)?.let { observeTaskState(info.taskId, it) }
         if (leash != null) {
             observedLeashes[info.taskId] = leash
@@ -633,6 +668,7 @@ object TaskSurfaceCompat {
     }
 
     private fun appendOwnedTransforms(transaction: Any) {
+        composed.incrementAndGet()
         val native = transaction as SurfaceControl.Transaction
         // Shell lays a wallpaper out at its root's origin and WM never moves it back; restore exactly that.
         generateSequence { wallpaperResets.poll() }.filter { it.isValid }.forEach { native.setScale(it, 1f, 1f).setPosition(it, 0f, 0f) }
@@ -936,6 +972,9 @@ object TaskSurfaceCompat {
     private const val ENTRY_EXPECTATION_MS = 3_000L
     private const val REPOSITION_DURATION_MS = 260L
     private const val RESTORE_DURATION_MS = 180L
+    /** Longer than any default Shell animation; a launcher-driven one keeps composing through its lift. */
+    private const val SHELL_BUSY_MS = 3_000L
+    private const val STATS_WINDOW_MS = 10_000L
     /** TransitionInfo.FLAG_IS_WALLPAPER (hidden). */
     private const val FLAG_IS_WALLPAPER = 1 shl 1
 }

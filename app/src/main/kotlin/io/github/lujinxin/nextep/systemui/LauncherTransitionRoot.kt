@@ -27,6 +27,7 @@ internal object LauncherTransitionRoot {
             val callbackAt = types.indexOfFirst { it.isInterface && it.name.endsWith("TransitionFinishCallback") }
             module.hook(method).intercept(object : XposedInterface.Hooker {
                 override fun intercept(chain: XposedInterface.Chain): Any? {
+                    TaskSurfaceCompat.markShellBusy()
                     val args = chain.args.toTypedArray()
                     val transition = args.firstOrNull() ?: return chain.proceed()
                     val start = args.getOrNull(startAt) as? SurfaceControl.Transaction ?: return chain.proceed()

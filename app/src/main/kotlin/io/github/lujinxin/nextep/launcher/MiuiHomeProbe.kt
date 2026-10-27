@@ -36,6 +36,19 @@ object MiuiHomeProbe {
             NeXtepLog.info("miui_home", "Probe installed")
         }
         HookGuard.run("miui_home_scale_probe") { installScaleProbe(module) }
+        // Reporting must not wait for a resumed activity: no HyperOS export has seen one yet.
+        android.os.Handler(Looper.getMainLooper()).post { registerFromApplication(attempt = 1) }
+    }
+
+    private fun registerFromApplication(attempt: Int) {
+        val application = runCatching {
+            Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as? android.app.Application
+        }.getOrNull()
+        if (application != null) {
+            NeXtepLog.info("miui_home", "Loaded in ${application.packageName} pid=${android.os.Process.myPid()} attempt=$attempt")
+            return register(application)
+        }
+        if (attempt < 20) android.os.Handler(Looper.getMainLooper()).postDelayed({ registerFromApplication(attempt + 1) }, 500L)
     }
 
     private val scaleSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()

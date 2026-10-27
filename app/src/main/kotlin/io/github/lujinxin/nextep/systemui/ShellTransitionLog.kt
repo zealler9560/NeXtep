@@ -18,6 +18,7 @@ internal object ShellTransitionLog {
             method.isAccessible = true
             module.hook(method).intercept(object : XposedInterface.Hooker {
                 override fun intercept(chain: XposedInterface.Chain): Any? {
+                    io.github.lujinxin.nextep.framework.TaskSurfaceCompat.markShellBusy()
                     val handler = chain.proceed()
                     if (SystemUiRuntime.isWorkspaceActive()) runCatching {
                         log(chain.args.firstOrNull { it?.javaClass?.name == TRANSITION_INFO }, handler)

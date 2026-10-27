@@ -63,6 +63,7 @@ internal object WorkspaceDisplayTransitionHook {
         module.hook(play).intercept(object : XposedInterface.Hooker {
             override fun intercept(chain: XposedInterface.Chain): Any? {
                 val active = chain.args.firstOrNull() ?: return chain.proceed()
+                TaskSurfaceCompat.markShellBusy()
                 if (!SystemUiRuntime.isWorkspaceActive()) return chain.proceed()
                 val info = field(active, "mInfo") ?: return chain.proceed()
                 val preset = field(active, "mHandler")

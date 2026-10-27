@@ -158,6 +158,7 @@ object SystemUiRuntime {
                 onStateChanged = ::updateLockStateObservation,
             )
 
+            runCatching { io.github.lujinxin.nextep.logging.NeXtepLog.receiveMirrors(applicationContext) }
             val filter = IntentFilter().apply {
                 addAction(TriggerBroadcastContract.ACTION_TOGGLE_WORKSPACE)
                 addAction(TriggerBroadcastContract.ACTION_SET_WORKSPACE)
