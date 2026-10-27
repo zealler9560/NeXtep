@@ -98,6 +98,7 @@ object SystemUiBottomCornerGestureMonitor {
                         // The framework receiver acknowledges/recycles input even if a callback fails.
                         runCatching {
                             val event = args?.firstOrNull() as? MotionEvent
+                            if (event != null) io.github.lujinxin.nextep.framework.TaskSurfaceCompat.noteTouch()
                             if (event == null || !event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) ||
                                 !SystemUiRuntime.isStatusBarGestureEnabled() ||
                                 (event.actionMasked != MotionEvent.ACTION_DOWN && !detector.isObserving)
