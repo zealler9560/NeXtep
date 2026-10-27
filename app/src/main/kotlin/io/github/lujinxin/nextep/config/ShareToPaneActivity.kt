@@ -9,7 +9,7 @@ import android.os.Bundle
 import android.util.Patterns
 import android.widget.Toast
 import io.github.lujinxin.nextep.R
-import io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT
+import io.github.lujinxin.nextep.display.MAX_WORKSPACE_SLOTS
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.trigger.TriggerCoordinator
 
@@ -26,7 +26,9 @@ class ShareToPaneActivity : Activity() {
             Toast.makeText(this, R.string.share_unsupported, Toast.LENGTH_SHORT).show()
             finish(); return
         }
-        val panes = listOf(getString(R.string.pane_main)) + (1..WORKSPACE_SLOT_COUNT).map { getString(R.string.pane_slot, it) }
+        // Every roster pane is offered; picking one past the current roster occupies it and
+        // the roster grows to bring it into the column.
+        val panes = listOf(getString(R.string.pane_main)) + (1..MAX_WORKSPACE_SLOTS).map { getString(R.string.pane_slot, it) }
         SystemDialogs.builder(this)
             .setTitle(R.string.share_pane_title)
             .setItems(panes.toTypedArray()) { _, which ->
