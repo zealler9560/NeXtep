@@ -434,6 +434,10 @@ class NeXtepWindowController(
         // starts a fresh alpha=0 entry animation and repeats all display setup.
         val geometry = geometry()
         applyWindowGeometry(geometry)
+        // Like show(): returning to the workspace starts the column at its top.
+        // Reset BEFORE applySlotLayout so the layout sees offset 0 from the start;
+        // resetting after would apply the stale offset for one frame.
+        sidebarView?.resetScroll()
         sidebarView?.let { applySlotLayout(it, geometry) }
         records.forEach { record ->
             record.view.animate().cancel()
