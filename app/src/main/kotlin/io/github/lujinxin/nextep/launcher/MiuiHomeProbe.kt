@@ -35,6 +35,56 @@ object MiuiHomeProbe {
             })
             NeXtepLog.info("miui_home", "Probe installed")
         }
+        HookGuard.run("miui_home_scale_probe") { installScaleProbe(module) }
+    }
+
+    private val scaleSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    @Volatile private var activeReadAt = 0L
+    @Volatile private var active = false
+
+    /**
+     * Which launcher code scales which view while the workbench shows: the desktop's own zoom on
+     * returning home and around the minus-one screen is drawn by the launcher, and the frames to
+     * turn it off are named only here. One line per view class and caller every two seconds.
+     */
+    private fun installScaleProbe(module: XposedModule) {
+        val setters = listOf(android.view.View::class.java.getDeclaredMethod("setScaleX", Float::class.javaPrimitiveType),
+            android.view.View::class.java.getDeclaredMethod("setScaleY", Float::class.javaPrimitiveType),
+            android.view.ViewPropertyAnimator::class.java.getDeclaredMethod("scaleX", Float::class.javaPrimitiveType),
+            android.view.ViewPropertyAnimator::class.java.getDeclaredMethod("scaleY", Float::class.javaPrimitiveType))
+        setters.forEach { method ->
+            module.hook(method).intercept(object : XposedInterface.Hooker {
+                override fun intercept(chain: XposedInterface.Chain): Any? {
+                    runCatching { scaled(chain.thisObject, method.name, chain.args.firstOrNull() as? Float) }
+                    return chain.proceed()
+                }
+            })
+        }
+        NeXtepLog.info("miui_home", "Scale probe installed")
+    }
+
+    private fun scaled(target: Any?, setter: String, value: Float?) {
+        val view = (target as? android.view.View) ?: (target as? android.view.ViewPropertyAnimator)?.let { animator ->
+            runCatching { animator.javaClass.getDeclaredField("mView").apply { isAccessible = true }.get(animator) as? android.view.View }.getOrNull()
+        } ?: return
+        // Launcher views only, and only full-size ones: an icon's press scale is noise.
+        if (view.width < 600 || view.height < 600) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - activeReadAt > 500) {
+            activeReadAt = now
+            active = runCatching {
+                android.provider.Settings.Global.getInt(view.context.contentResolver, "nextep_workspace_active_v1", 0) == 1
+            }.getOrDefault(false)
+        }
+        if (!active) return
+        val caller = Thread.currentThread().stackTrace.firstOrNull { frame ->
+            frame.className.startsWith("com.miui") && !frame.className.contains("Probe")
+        }?.let { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" } ?: "?"
+        val key = "${view.javaClass.name}/$caller"
+        val last = scaleSeen[key] ?: 0L
+        if (now - last < 2_000) return
+        scaleSeen[key] = now
+        NeXtepLog.info("miui_home", "Scaled ${view.javaClass.name} ${view.width}x${view.height} $setter=$value by $caller")
     }
 
     private fun resumed(activity: Activity) {
