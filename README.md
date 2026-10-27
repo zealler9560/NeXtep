@@ -108,7 +108,7 @@
 
 1. 从 [Releases](https://github.com/yishisanren/NeXtep/releases) 下载 APK 并安装（包名 `io.github.yishisanren.panes`）。
 2. 在 LSPosed 中启用「格窗工作台」，勾选内置[作用域列表](app/src/main/resources/META-INF/xposed/scope.list)里适用于本机的全部项目：SystemUI、系统框架、桌面、应用分身服务、负一屏。
-3. 小米澎湃 OS：作用域里勾选 SystemUI、系统框架和系统桌面；同时安装 Releases 里的伴生模块 `NeXtepHomeShim`，在 LSPosed 中启用。
+3. 小米澎湃 OS：作用域里勾选 SystemUI、系统框架和系统桌面，不需要其他模块。以前装过伴生模块 `NeXtepHomeShim` 的，在 LSPosed 里停用并卸载它。
 4. 如果以前装过 NeXtep（包名 `io.github.lujinxin.nextep`），先在 LSPosed 里停用并卸载它，两个模块不能同时钩住 SystemUI。
 5. 重启手机。
 6. 打开「格窗」，选常用应用，添加控制中心开关。

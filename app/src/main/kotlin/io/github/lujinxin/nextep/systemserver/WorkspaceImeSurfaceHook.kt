@@ -60,13 +60,18 @@ internal object WorkspaceImeSurfaceHook {
         val transaction = call(display, "getPendingTransaction") as? SurfaceControl.Transaction ?: return
         val container = call(display, "getImeContainer") ?: field(display, "mImeWindowsContainer")
         val surface = container?.let { call(it, "getSurfaceControl") } as? SurfaceControl
-        val task = (field(display, "mImeLayeringTarget") ?: field(display, "mImeTarget"))?.let { call(it, "getTask") }
+        // HyperOS can make a taskless system window the layering target while the editor sits in the
+        // input or control target (from the former HyperOS companion module); any of them will do.
+        val tasks = listOf(field(display, "mImeLayeringTarget") ?: field(display, "mImeTarget"),
+            field(display, "mImeInputTarget"), field(display, "mImeControlTarget"))
+            .mapNotNull { target -> target?.let { call(it, "getTask") ?: field(it, "mActivityRecord")?.let { record -> call(record, "getTask") } } }
         // The main app's own bounds (the shortened canvas under a wide picture, else the screen); WM
         // attaches the keyboard to it when they cover the display, and then the app's transform applies.
-        val fit = geometry != null && surface != null && task != null &&
-            call(task, "getWindowingMode") == 1 &&
-            call(task, "getBounds") == Rect(0, geometry.mainTaskTop, geometry.screenWidth, geometry.screenHeight) &&
-            call(display, "shouldImeAttachedToApp") != true
+        val fit = geometry != null && surface != null && call(display, "shouldImeAttachedToApp") != true &&
+            tasks.any { task ->
+                call(task, "getWindowingMode") == 1 &&
+                    call(task, "getBounds") == Rect(0, geometry.mainTaskTop, geometry.screenWidth, geometry.screenHeight)
+            }
         if (fit) {
             val g = checkNotNull(geometry)
             setMatrix.invoke(transaction, surface, g.mainScale, 0f, 0f, g.mainScale)

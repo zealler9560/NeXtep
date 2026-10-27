@@ -108,7 +108,7 @@ The workspace follows the system's light and dark mode, or stays light or dark. 
 
 1. Download the APK from [Releases](https://github.com/yishisanren/NeXtep/releases) and install it (package `io.github.yishisanren.panes`).
 2. Enable "格窗工作台 (Panes Workbench)" in LSPosed and tick every entry of the built-in [scope list](app/src/main/resources/META-INF/xposed/scope.list) that exists on your device: SystemUI, the framework, the launcher, the app-cloning service and the assistant screen.
-3. On Xiaomi HyperOS, tick SystemUI, the framework and the system launcher, and also install and enable the companion module `NeXtepHomeShim` from Releases.
+3. On Xiaomi HyperOS, tick SystemUI, the framework and the system launcher; nothing else is needed. If the companion module `NeXtepHomeShim` is installed, disable and uninstall it.
 4. If NeXtep (`io.github.lujinxin.nextep`) is installed, disable and uninstall it first; two modules must not hook SystemUI at once.
 5. Reboot.
 6. Open Panes, pick favourite apps and add the Quick Settings tile.

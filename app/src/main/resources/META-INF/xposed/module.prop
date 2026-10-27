@@ -1,7 +1,7 @@
 id=panes
 name=格窗工作台
-version=3.0
-versionCode=113
+version=3.0.1
+versionCode=114
 author=yishisanren
 description=兼容 ColorOS 16 和 17 的侧边工作台：一个大窗加四个实时小窗，已在 OPPO、一加、realme 上测试
 minApiVersion=101
