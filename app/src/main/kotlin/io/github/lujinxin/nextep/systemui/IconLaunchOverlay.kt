@@ -18,13 +18,14 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.PathInterpolator
+import android.view.animation.LinearInterpolator
 import io.github.lujinxin.nextep.logging.NeXtepLog
 
 /**
- * The launcher's own open animation lifts the tapped icon on a plate of its colour and grows it
- * into the window. The task itself is black until the app draws, so this plate flies in a SystemUI
- * window over the task's place and fades away once the task is presented under it.
+ * The launcher's own open animation lifts the tapped icon on a plate and grows it into the window.
+ * The task itself is black until the app draws, so this plate flies in a SystemUI window over the
+ * task's place and fades away once the task is presented under it. The look follows an
+ * [IconLaunchStyle]; the mechanics are the same on every ROM.
  *
  * The window is added hidden ahead of time ([prepare]): creating it on the tap cost the main
  * thread the add and the window's first layout, about 50 ms, right when the flight should start.
@@ -64,11 +65,12 @@ class IconLaunchOverlay(private val context: Context, private val windowType: ()
         runCatching { windowManager.removeView(view) }
     }
 
-    fun start(icon: Drawable, from: Rect, to: Rect) {
+    /** [icon] flies from [from] to [to] on a plate of [plateColor], the way [style] says. */
+    fun start(icon: Drawable, plateColor: Int, from: Rect, to: Rect, style: IconLaunchStyle) {
         prepare()
         val view = flight ?: return
         val mine = ++generation
-        view.begin(icon, from, to)
+        view.begin(icon, plateColor, from, to, style)
         // An app that never shows up must not leave its plate on screen.
         handler.postDelayed({ if (generation == mine) finish() }, TIMEOUT_MS)
     }
@@ -90,22 +92,37 @@ class IconLaunchOverlay(private val context: Context, private val windowType: ()
         private val bounds = RectF()
         private val density = context.resources.displayMetrics.density
         private var icon: Drawable? = null
+        private var style = IconLaunchStyle.GENERIC
         private val from = Rect()
         private val to = Rect()
+        private val pop = RectF()
+        /** Elapsed share of the whole flight, 0..1, time-linear; the phases read it. */
         private var progress = 0f
         private var flying: ValueAnimator? = null
         private var onLanded: (() -> Unit)? = null
 
-        fun begin(icon: Drawable, from: Rect, to: Rect) {
+        fun begin(icon: Drawable, plateColor: Int, from: Rect, to: Rect, style: IconLaunchStyle) {
             rest()
             this.icon = icon
+            this.style = style
             this.from.set(from)
             this.to.set(to)
-            plate.color = plateColor(icon)
+            plate.color = plateColor
+            if (style.popFraction > 0f) {
+                val w = to.width() * style.popFraction
+                val h = to.height() * style.popFraction
+                val cx = from.exactCenterX() + (to.exactCenterX() - from.exactCenterX()) * style.popBias
+                val cy = from.exactCenterY() + (to.exactCenterY() - from.exactCenterY()) * style.popBias
+                pop.set(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+            } else {
+                pop.set(from)
+                val grow = (style.liftScale - 1f) / 2f
+                pop.inset(-from.width() * grow, -from.height() * grow)
+            }
             progress = 0f
             alpha = 1f
             visibility = VISIBLE
-            flying = animator(0f, 1f, FLIGHT_MS).also { it.start() }
+            flying = animator(0f, 1f, style.totalMs).also { it.start() }
         }
 
         fun land(onRested: () -> Unit) {
@@ -128,7 +145,7 @@ class IconLaunchOverlay(private val context: Context, private val windowType: ()
 
         private fun animator(start: Float, end: Float, durationMs: Long) = ValueAnimator.ofFloat(start, end).apply {
             duration = durationMs
-            interpolator = FLIGHT_CURVE
+            interpolator = LinearInterpolator()
             addUpdateListener { progress = it.animatedValue as Float; invalidate() }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
@@ -140,56 +157,76 @@ class IconLaunchOverlay(private val context: Context, private val windowType: ()
         }
 
         override fun onDraw(canvas: Canvas) {
-            val t = progress
-            bounds.set(lerp(from.left, to.left, t), lerp(from.top, to.top, t), lerp(from.right, to.right, t), lerp(from.bottom, to.bottom, t))
-            val radius = lerp(from.width() * ICON_CORNER, PANE_CORNER_DP * density, t)
+            val elapsed = progress * style.totalMs
+            val icon = icon
+            if (elapsed < style.liftMs) {
+                // The icon lifts in place: it is drawn as itself, growing, on its own plate.
+                val scale = 1f + (style.liftScale - 1f) * (elapsed / style.liftMs)
+                val halfW = from.width() * scale / 2
+                val halfH = from.height() * scale / 2
+                bounds.set(from.exactCenterX() - halfW, from.exactCenterY() - halfH, from.exactCenterX() + halfW, from.exactCenterY() + halfH)
+                val radius = bounds.width() * ICON_CORNER
+                canvas.drawRoundRect(bounds, radius, radius, plate)
+                drawIcon(canvas, icon, bounds.width(), 1f)
+                return
+            }
+            val g = style.growCurve.getInterpolation(((elapsed - style.liftMs) / style.growMs).coerceIn(0f, 1f))
+            bounds.set(lerp(pop.left, to.left.toFloat(), g), lerp(pop.top, to.top.toFloat(), g),
+                lerp(pop.right, to.right.toFloat(), g), lerp(pop.bottom, to.bottom.toFloat(), g))
+            val radius = lerp(from.width() * ICON_CORNER * style.liftScale, PANE_CORNER_DP * density, g)
             canvas.drawRoundRect(bounds, radius, radius, plate)
-            // The icon grows with the plate for most of the flight and is gone as it lands.
-            val icon = icon ?: return
-            val iconAlpha = 1f - ((t - ICON_FADE_START) / (ICON_FADE_END - ICON_FADE_START)).coerceIn(0f, 1f)
+            val iconAlpha = 1f - ((g - style.iconFadeStart) / (style.iconFadeEnd - style.iconFadeStart)).coerceIn(0f, 1f)
             if (iconAlpha <= 0f) return
-            val size = lerp(from.width().toFloat(), to.width() * ICON_END_FRACTION, t)
+            val lifted = from.width() * style.liftScale
+            val size = if (style.iconGrows) lerp(lifted, to.width() * ICON_END_FRACTION, g) else lifted
+            drawIcon(canvas, icon, size, iconAlpha)
+        }
+
+        private fun drawIcon(canvas: Canvas, icon: Drawable?, size: Float, alpha: Float) {
+            icon ?: return
             val cx = bounds.centerX()
             val cy = bounds.centerY()
             icon.setBounds(Math.round(cx - size / 2), Math.round(cy - size / 2), Math.round(cx + size / 2), Math.round(cy + size / 2))
-            icon.alpha = Math.round(iconAlpha * 255)
+            icon.alpha = Math.round(alpha * 255)
             icon.draw(canvas)
             icon.alpha = 255
         }
 
-        private fun lerp(a: Int, b: Int, t: Float) = a + (b - a) * t
         private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
     }
 
-    private companion object {
-        const val FLIGHT_MS = 400L
-        const val FINISH_MS = 160L
-        const val FADE_MS = 150L
-        const val TIMEOUT_MS = 1_500L
-        const val ICON_CORNER = 0.22f
-        const val PANE_CORNER_DP = 14f
-        const val ICON_FADE_START = 0.6f
-        const val ICON_FADE_END = 0.95f
-        const val ICON_END_FRACTION = 0.6f
-        val FLIGHT_CURVE = PathInterpolator(0.2f, 0f, 0f, 1f)
+    companion object {
+        private const val FINISH_MS = 160L
+        private const val FADE_MS = 150L
+        private const val TIMEOUT_MS = 1_500L
+        private const val ICON_CORNER = 0.22f
+        private const val PANE_CORNER_DP = 14f
+        private const val ICON_END_FRACTION = 0.6f
 
         /**
          * An adaptive icon's background layer, the colour the launcher grows out of; otherwise the
-         * icon as a whole. The average of the opaque pixels of a 16x16 rendering.
+         * icon as a whole. The most common colour of a 16x16 rendering, so a white icon with a dark
+         * mark stays white rather than turning grey.
          */
         fun plateColor(icon: Drawable): Int = runCatching {
             val layer = (icon as? AdaptiveIconDrawable)?.background ?: icon
             val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
             layer.setBounds(0, 0, 16, 16)
             layer.draw(Canvas(bitmap))
-            var r = 0L; var g = 0L; var b = 0L; var n = 0L
+            val counts = HashMap<Int, Int>()
+            val sums = HashMap<Int, IntArray>()
             for (y in 0 until 16) for (x in 0 until 16) {
                 val c = bitmap.getPixel(x, y)
                 if (Color.alpha(c) < 128) continue
-                r += Color.red(c); g += Color.green(c); b += Color.blue(c); n++
+                val key = (Color.red(c) shr 4 shl 8) or (Color.green(c) shr 4 shl 4) or (Color.blue(c) shr 4)
+                counts[key] = (counts[key] ?: 0) + 1
+                sums.getOrPut(key) { IntArray(3) }.let { it[0] += Color.red(c); it[1] += Color.green(c); it[2] += Color.blue(c) }
             }
             bitmap.recycle()
-            if (n == 0L) Color.WHITE else Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+            val key = counts.maxByOrNull { it.value }?.key ?: return Color.WHITE
+            val n = counts.getValue(key)
+            val s = sums.getValue(key)
+            Color.rgb(s[0] / n, s[1] / n, s[2] / n)
         }.getOrDefault(Color.WHITE)
     }
 }

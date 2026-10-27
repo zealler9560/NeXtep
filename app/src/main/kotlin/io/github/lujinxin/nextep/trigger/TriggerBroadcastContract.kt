@@ -33,6 +33,8 @@ object TriggerBroadcastContract {
     const val EXTRA_TARGET_USER_ID = "io.github.yishisanren.panes.extra.TARGET_USER_ID"
     const val EXTRA_BYPASS_MULTI_APP_CHOOSER =
         "io.github.yishisanren.panes.extra.BYPASS_MULTI_APP_CHOOSER"
+    /** The icon as the launcher drew it (a Bitmap), so the flight shows the desktop's own icon; stripped before the app starts. */
+    const val EXTRA_ICON_BITMAP = "io.github.yishisanren.panes.extra.ICON_BITMAP"
     // Workbench preferences stay in SystemUI; the settings page reads them from the
     // query reply and changes them with commands on the same protected receiver.
     const val EXTRA_COMMAND_KEY = "io.github.yishisanren.panes.extra.COMMAND_KEY"

@@ -37,8 +37,8 @@ class SlotTaskCoordinator(
     private val onContentDragEntered: (Int) -> Unit = {},
     private val onContentDragEnded: (Boolean) -> Unit = {},
     private val pauseRules: SlotPauseRules? = null,
-    /** An app launched from an icon at this screen rectangle: the window controller flies the icon. */
-    private val onIconLaunch: (ComponentName, Rect) -> Unit = { _, _ -> },
+    /** An app launched from an icon at this screen rectangle, with the icon as the desktop drew it when it sent one. */
+    private val onIconLaunch: (ComponentName, Rect, android.graphics.Bitmap?) -> Unit = { _, _, _ -> },
     /** Any app that takes over the main pane sends the previous main app into an empty slot. */
     private val autoMinimizeMain: () -> Boolean = { false },
 ) : VirtualDisplaySlot.Listener, TaskSwitcherView.Listener {
@@ -779,9 +779,11 @@ class SlotTaskCoordinator(
         // An icon launch animates the leash itself; the system's own open transition would zoom
         // the task from the screen centre at the same time, so it becomes a fade.
         val fromIcon = normalized.sourceBounds != null
+        val iconBitmap = normalized.getParcelableExtra(TriggerBroadcastContract.EXTRA_ICON_BITMAP, android.graphics.Bitmap::class.java)
+        normalized.removeExtra(TriggerBroadcastContract.EXTRA_ICON_BITMAP)
         normalized.sourceBounds?.let {
             mainTaskPresenter.expectEntryFrom(component.packageName, it, geometryProvider())
-            onIconLaunch(component, it)
+            onIconLaunch(component, it, iconBitmap)
         }
         fun launchOptions() = (if (fromIcon) iconLaunchAnimation() else android.app.ActivityOptions.makeBasic())
             .apply { setLaunchDisplayId(Display.DEFAULT_DISPLAY) }

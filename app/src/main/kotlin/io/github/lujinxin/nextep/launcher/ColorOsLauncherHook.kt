@@ -12,6 +12,7 @@ import android.os.Process
 import android.os.UserHandle
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.systemui.SystemDialogLayoutController
+import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.xposed.HookGuard
 import io.github.libxposed.api.XposedInterface
@@ -73,7 +74,9 @@ object ColorOsLauncherHook {
                         val view = args[0] as? View
                         val icon = view?.takeIf { it.width > 0 && it.isAttachedToWindow }
                         if (icon != null) {
-                            intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
+                            // A launcher that filled the bounds itself keeps them; the icon bitmap rides along.
+                            if (intent?.sourceBounds == null) intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
+                            iconBitmap(icon)?.let { intent?.putExtra(TriggerBroadcastContract.EXTRA_ICON_BITMAP, it) }
                             liftIcon(icon)
                         } else NeXtepLog.info("launcher_redirect", "No icon source: view=${view?.javaClass?.name} " +
                             "size=${view?.width}x${view?.height} attached=${view?.isAttachedToWindow} bounds=${intent?.sourceBounds}")
@@ -244,6 +247,21 @@ class AssistantViewRootHooker : XposedInterface.Hooker {
 }
 
 private const val ASSISTANT_SCREEN_PACKAGE = "com.coloros.assistantscreen"
+
+/** The icon as the desktop draws it: a BubbleTextView keeps it as its top compound drawable. */
+private fun iconBitmap(view: View): android.graphics.Bitmap? = runCatching {
+    val drawable = (view as? android.widget.TextView)?.compoundDrawables?.get(1) ?: return null
+    val size = minOf(drawable.bounds.width().takeIf { it > 0 } ?: view.width, ICON_BITMAP_MAX_PX)
+    if (size <= 0) return null
+    val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+    val saved = android.graphics.Rect(drawable.bounds)
+    drawable.setBounds(0, 0, size, size)
+    drawable.draw(android.graphics.Canvas(bitmap))
+    drawable.bounds = saved
+    bitmap
+}.getOrNull()
+
+private const val ICON_BITMAP_MAX_PX = 256
 
 /** The desktop icon leaves while SystemUI's copy of it flies to the pane; it comes back under the opened task. */
 private fun liftIcon(icon: View) {

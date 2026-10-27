@@ -935,14 +935,24 @@ class NeXtepWindowController(
 
     private val iconLaunch = IconLaunchOverlay(context) { SystemUiWindowTypeResolver.resolve() }
 
-    /** The tapped icon flies from [source] to the main pane on a plate of its colour, covering the black first frames. */
-    private fun flyIcon(component: android.content.ComponentName, source: android.graphics.Rect) {
+    private val iconLaunchStyle = IconLaunchStyle.forDevice()
+
+    /**
+     * The tapped icon flies from [source] to the main pane, covering the task's black first frames.
+     * The desktop's own rendering of the icon is used when it came along; the plate takes the app's
+     * splash colour where the ROM's launcher does, else the icon's.
+     */
+    private fun flyIcon(component: android.content.ComponentName, source: android.graphics.Rect, desktopIcon: android.graphics.Bitmap?) {
         if (source.isEmpty) return
-        val icon = runCatching { context.packageManager.getActivityIcon(component) }
-            .recoverCatching { context.packageManager.getApplicationIcon(component.packageName) }
-            .getOrNull() ?: return
+        val icon = desktopIcon?.let { android.graphics.drawable.BitmapDrawable(context.resources, it) }
+            ?: runCatching { context.packageManager.getActivityIcon(component) }
+                .recoverCatching { context.packageManager.getApplicationIcon(component.packageName) }
+                .getOrNull() ?: return
+        val plate = (if (iconLaunchStyle.plateFromSplash) IconLaunchStyle.splashColor(context, component) else null)
+            ?: IconLaunchOverlay.plateColor(icon)
         val geometry = geometry()
-        iconLaunch.start(icon, source, android.graphics.Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom))
+        iconLaunch.start(icon, plate, source,
+            android.graphics.Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom), iconLaunchStyle)
     }
 
     private fun cancelDragVisuals(keepOverlay: Boolean = false) {
