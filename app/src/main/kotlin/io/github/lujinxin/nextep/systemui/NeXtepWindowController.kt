@@ -469,10 +469,12 @@ class NeXtepWindowController(
         workspaceVisible = true
         backdropHandler.removeCallbacks(releaseParkedWindows)
         publishPrivacy()
+        // Every entry starts the slot column at its top.  Reset BEFORE reconfigure so the
+        // layout inside it sees offset 0 from the start (reconfigure → applySlotLayout →
+        // applyScrollOffset); resetting after would apply the stale offset for one frame.
+        sidebarView?.resetScroll()
         // Restores parked windows too: configureWindow makes them opaque and touchable again.
         val geometry = reconfigure().getOrThrow()
-        // Every entry starts the slot column at its top.
-        sidebarView?.resetScroll()
         // Windows released after a long hide recreate their surfaces in the first frame (~60 ms).
         // Draw that frame at the start positions, where nothing shows, and slide from the next
         // one; otherwise the animation's clock skipped a third of the slide.
