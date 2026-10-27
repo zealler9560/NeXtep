@@ -7,6 +7,8 @@ import android.os.Looper
 import android.view.Display
 import android.view.WindowInsets
 import android.view.WindowManager
+import io.github.lujinxin.nextep.display.MAX_WORKSPACE_SLOTS
+import io.github.lujinxin.nextep.display.WORKSPACE_VISIBLE_SLOT_COUNT
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.SidebarSide
 import io.github.lujinxin.nextep.workspace.WorkspaceControlMetrics
@@ -61,6 +63,8 @@ internal class WorkspaceViewport(
     private var baseProfile: WorkspaceLayoutProfile? = null
     private var wideSlotIndex: Int? = null
     private var wideAspect = WorkspaceLayoutProfile.DEFAULT_WIDE_ASPECT
+    /** How many slots the roster holds; the recorded profile carries it across restarts. */
+    private var rosterSlotCount = WORKSPACE_VISIBLE_SLOT_COUNT
     private var controlAtBottom = false
     private var statusBar = 0
     private val notifyChanged = Runnable { onChanged() }
@@ -103,6 +107,19 @@ internal class WorkspaceViewport(
     fun layout(refreshMetrics: Boolean = false): WorkspaceLayoutProfile {
         if (refreshMetrics || cached == null) refresh()
         return checkNotNull(profile)
+    }
+
+    /** The roster grew or shrank: the recorded profile and every derivation carry the count. */
+    fun setRosterSlotCount(count: Int) {
+        val clamped = count.coerceIn(WORKSPACE_VISIBLE_SLOT_COUNT, MAX_WORKSPACE_SLOTS)
+        if (clamped == rosterSlotCount && profile?.slotCount == clamped) return
+        rosterSlotCount = clamped
+        baseProfile = baseProfile?.copy(slotCount = clamped)
+        profile = profile?.copy(slotCount = clamped)
+        profile?.let { SystemServerWorkspaceBridge.publishLayout(context, it) }
+        cachedKey?.let { saveSnapshot(it) }
+        handler.removeCallbacks(notifyChanged)
+        handler.post(notifyChanged)
     }
 
     fun setNavigationButtonsEnabled(enabled: Boolean) {
@@ -155,6 +172,8 @@ internal class WorkspaceViewport(
             it.wideSlotIndex == null && (buttons || it.geometry.navigationInsets == WorkspaceNavigationInsets())
         }?.let { it.copy(geometry = it.geometry.copy(displayRotation = rotation)) }
         if (savedProfile != null) {
+            // The record carries the roster the user left behind; restore it with the layout.
+            rosterSlotCount = savedProfile.slotCount
             val g = savedProfile.geometry
             updateSnapshot(Snapshot(g.screenWidth, g.screenHeight, savedProfile.densityDpi / 160f,
                 g.navigationInsets, rotation), key, savedProfile)
@@ -194,9 +213,9 @@ internal class WorkspaceViewport(
 
     private fun updateSnapshot(snapshot: Snapshot, key: String?, saved: WorkspaceLayoutProfile? = null) {
         if (cached != snapshot || profile == null) {
-            baseProfile = saved ?: WorkspaceLayoutProfile.create(snapshot.width, snapshot.height,
+            baseProfile = (saved ?: WorkspaceLayoutProfile.create(snapshot.width, snapshot.height,
                 (snapshot.density * 160).roundToInt(), snapshot.navigationInsets, snapshot.displayRotation,
-                statusBar = statusBar)
+                statusBar = statusBar)).copy(slotCount = rosterSlotCount)
             profile = checkNotNull(baseProfile).withWideSlot(wideSlotIndex, wideAspect).withControlAtBottom(controlAtBottom)
             SystemServerWorkspaceBridge.publishLayout(context, checkNotNull(profile))
         }

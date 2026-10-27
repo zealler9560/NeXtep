@@ -16,8 +16,9 @@ import io.github.lujinxin.nextep.config.AppLanguage
 import io.github.lujinxin.nextep.display.SlotState
 import io.github.lujinxin.nextep.display.SlotTaskCoordinator
 import io.github.lujinxin.nextep.display.SlotTaskDrag
+import io.github.lujinxin.nextep.display.MAX_WORKSPACE_SLOTS
 import io.github.lujinxin.nextep.display.VirtualDisplaySlot
-import io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT
+import io.github.lujinxin.nextep.display.WORKSPACE_VISIBLE_SLOT_COUNT
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.safety.FeatureGate
 import io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator
@@ -26,6 +27,7 @@ import io.github.lujinxin.nextep.workspace.SidebarSide
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.workspace.WorkbenchScene
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
+import io.github.lujinxin.nextep.workspace.WorkspaceLayoutProfile
 
 class NeXtepWindowController(
     private val context: Context,
@@ -43,7 +45,11 @@ class NeXtepWindowController(
     private var initialized = false
     private var slotCoordinator: SlotTaskCoordinator? = null
     private var topAppStrip: TopAppStripView? = null
-    private var sidebarView: FrameLayout? = null
+    private var sidebarView: SidebarPanelView? = null
+    /** Slots the roster currently holds: the visible four plus trailing room as apps arrive. */
+    private var rosterSize = WORKSPACE_VISIBLE_SLOT_COUNT
+    /** The profile the current slot layout was applied from; a different one restarts the scroll. */
+    private var laidOutProfile: WorkspaceLayoutProfile? = null
     private var contentHighlightView: View? = null
     private var slotWindows: List<VirtualDisplaySlot> = emptyList()
     private var slotBackgroundSwipeEnabled = true
@@ -461,6 +467,8 @@ class NeXtepWindowController(
         publishPrivacy()
         // Restores parked windows too: configureWindow makes them opaque and touchable again.
         val geometry = reconfigure().getOrThrow()
+        // Every entry starts the slot column at its top.
+        sidebarView?.resetScroll()
         // Windows released after a long hide recreate their surfaces in the first frame (~60 ms).
         // Draw that frame at the start positions, where nothing shows, and slide from the next
         // one; otherwise the animation's clock skipped a third of the slide.
@@ -894,11 +902,14 @@ class NeXtepWindowController(
         }
     }
 
-    private fun sidebarPanel(geometry: WorkspaceGeometry): View = FrameLayout(context).apply {
+    private fun sidebarPanel(geometry: WorkspaceGeometry): View = SidebarPanelView(context).apply {
         sidebarView = this
+        onScrollOffsetChanged = ::applyScrollOffset
         setBackgroundColor(Color.TRANSPARENT)
         if (FeatureGate.VIRTUAL_DISPLAY_SLOTS.defaultEnabled) {
-            slotWindows = List(WORKSPACE_SLOT_COUNT) { index -> VirtualDisplaySlot(context, index) }
+            // Pre-allocate the whole roster: slots join and leave the layout as the roster
+            // grows and shrinks, but the coordinator's slot list never changes size.
+            slotWindows = List(MAX_WORKSPACE_SLOTS) { index -> VirtualDisplaySlot(context, index) }
             slotWindows.forEach { slot ->
                 slot.view.setBackgroundSwipeEnabled(slotBackgroundSwipeEnabled)
                 addView(slot.view)
@@ -1164,20 +1175,38 @@ class NeXtepWindowController(
         return android.graphics.Bitmap.createBitmap(shot, 0, top, shot.width, bottom - top).also { shot.recycle() }
     }
 
-    private fun applySlotLayout(panel: FrameLayout, geometry: WorkspaceGeometry) {
+    private fun applySlotLayout(panel: SidebarPanelView, geometry: WorkspaceGeometry) {
         panel.invalidate()
         val profile = viewport.layout()
+        // A rebuilt profile (new geometry, wide change, roster growth) restarts the column
+        // at its top; re-applying the same one (a task change) leaves the scroll where it is.
+        if (profile !== laidOutProfile) {
+            laidOutProfile = profile
+            panel.resetScroll()
+        }
+        panel.maxScrollOffsetPx = profile.maxScrollOffset
         val bounds = profile.slots
         topAppStrip?.setWideSlot(profile.wideSlotIndex?.let { slotWindows[it].view })
         slotWindows.forEachIndexed { index, slot ->
             slot.setInteractive(index == profile.wideSlotIndex)
             slot.setLayoutProfile(profile)
             slot.view.setBackgroundSwipeEnabled(slotBackgroundSwipeEnabled && index != profile.wideSlotIndex)
-            if (index == profile.wideSlotIndex) return@forEachIndexed
+            if (index >= profile.slotCount) {
+                // Beyond the roster: never laid out, so its surface and display never exist.
+                // It joins in place when the roster grows into it.
+                slot.view.visibility = View.GONE
+                return@forEachIndexed
+            }
+            if (index == profile.wideSlotIndex) {
+                // The wide card lives in the top strip; the column's scroll must not move it.
+                slot.view.translationY = 0f
+                return@forEachIndexed
+            }
             if (slot.view.parent !== panel) {
                 (slot.view.parent as? android.view.ViewGroup)?.removeView(slot.view)
                 panel.addView(slot.view)
             }
+            slot.view.visibility = View.VISIBLE
             slot.view.setBackgroundSwipeSide(logicalSidebarSide(geometry))
             slot.view.layoutParams = FrameLayout.LayoutParams(
                 bounds[index].width,
@@ -1191,6 +1220,34 @@ class NeXtepWindowController(
                 marginEnd = slack + profile.gapPixels - profile.gapPixels / 2
                 topMargin = bounds[index].top
             }
+        }
+        applyScrollOffset(panel.scrollOffsetPx)
+    }
+
+    /**
+     * Positions the rail cards for the column's scroll offset: every card keeps its laid-out
+     * position and is translated up by [offsetPx]; cards fully out of the rail's window are
+     * hidden and reported off-screen, so the coordinator can pause their apps.
+     */
+    private fun applyScrollOffset(offsetPx: Int) {
+        val panel = sidebarView ?: return
+        val profile = viewport.layout()
+        val bounds = profile.slots
+        val windowHeight = profile.geometry.sidebarLogicalHeight
+        slotWindows.forEachIndexed { index, slot ->
+            if (index >= profile.slotCount || index == profile.wideSlotIndex) return@forEachIndexed
+            if (slot.view.parent !== panel) return@forEachIndexed
+            val bound = bounds[index]
+            // SCROLL RENDERING — FALLBACK POINT: translation only, relying on the panel and
+            // its window to clip cards at the rail's edges. If a half-scrolled card blanks or
+            // bleeds on device instead of cropping cleanly, replace this translation with a
+            // per-frame topMargin relayout (bound.top - offsetPx), or set a crop on the card's
+            // output layer (TaskSwitcherView already reaches its layer for output visibility).
+            slot.view.translationY = -offsetPx.toFloat()
+            val top = bound.top - offsetPx
+            val fullyOutside = top + bound.height <= 0 || top >= windowHeight
+            slot.view.visibility = if (fullyOutside) View.INVISIBLE else View.VISIBLE
+            slotCoordinator?.setSlotOffscreen(index, fullyOutside)
         }
     }
 
@@ -1321,6 +1378,7 @@ class NeXtepWindowController(
     private fun observeTasks(tasks: List<io.github.lujinxin.nextep.task.TaskRepository.TaskSnapshot>, states: List<SlotState>) {
         observedTasks = tasks
         observedStates = states
+        updateRosterSize(states)
         publishPrivacy()
         refreshScenes()
         if (!workspaceVisible || suspended || contentDrag.active || slotCoordinator?.launchingApps == true ||
@@ -1365,6 +1423,20 @@ class NeXtepWindowController(
         } else if (scene != null && scene.time > seenSceneTime && scene.taskId != main.taskId) {
             NeXtepLog.info("workbench_scene", "Scene ignored task=${scene.taskId} main=${main.taskId} wide=$wideSlotIndex")
         }
+    }
+
+    /**
+     * The roster keeps one trailing empty slot as the place to add the next app: when the
+     * trailing slot fills, the roster grows by one (to the cap) and the recorded layout
+     * follows, which re-lays the column out with the new slot in reach of a scroll.
+     */
+    private fun updateRosterSize(states: List<SlotState>) {
+        val highestOccupied = states.indexOfLast { it is SlotState.Occupied }
+        val wanted = (highestOccupied + 2).coerceIn(WORKSPACE_VISIBLE_SLOT_COUNT, MAX_WORKSPACE_SLOTS)
+        if (wanted == rosterSize) return
+        rosterSize = wanted
+        viewport.setRosterSlotCount(wanted)
+        NeXtepLog.info("scroll_column", "Roster size -> $wanted")
     }
 
     private fun pinCurrentLandscape(): Boolean {
