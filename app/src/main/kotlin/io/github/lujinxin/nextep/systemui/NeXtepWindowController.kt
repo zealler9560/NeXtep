@@ -1615,7 +1615,7 @@ class NeXtepWindowController(
             it.removeOnLayoutChangeListener(exclusionLayout)
             it.systemGestureExclusionRects = emptyList()
         }
-        exclusionView = index?.let { slotWindows.getOrNull(it)?.view }?.also {
+        exclusionView = index?.let { topAppStrip }?.also {
             it.addOnLayoutChangeListener(exclusionLayout)
             it.systemGestureExclusionRects = listOf(android.graphics.Rect(0, 0, it.width, it.height))
         }
@@ -1623,10 +1623,10 @@ class NeXtepWindowController(
 
     private fun wideBackRegion(): WideEdgeBackGestureDetector.Region? {
         if (!workspaceVisible || suspended) return null
-        val view = wideSlotIndex?.let { slotWindows.getOrNull(it) }?.view ?: return null
-        val rect = android.graphics.Rect()
-        if (!view.getScreenVisibleRect(rect) || rect.isEmpty) return null
-        return WideEdgeBackGestureDetector.Region(rect.left, rect.top, rect.right, rect.bottom)
+        // The top strip is the pane the video is drawn in; the slot view inside it is scaled to crop the picture.
+        val strip = wideSlotIndex?.let { topAppStrip }?.takeIf { it.isAttachedToWindow && it.width > 0 } ?: return null
+        val at = IntArray(2).also(strip::getLocationOnScreen)
+        return WideEdgeBackGestureDetector.Region(at[0], at[1], at[0] + strip.width, at[1] + strip.height)
     }
 
     private fun setWideLayout(index: Int?, taskId: Int?) {
