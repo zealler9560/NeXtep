@@ -13,10 +13,14 @@ internal object WorkspaceDisplayExchangePolicy {
         type: Int,
         changes: List<Change>,
         hasRecentSlotMove: Boolean = false,
+        movesIntoSlot: Boolean = false,
     ): Boolean =
-        type in setOf(1, 2, 3, 4, 6) &&
+        // HyperOS reports a move onto a sleeping slot display as WAKE (11); a screen wake moves no task there.
+        (type in setOf(1, 2, 3, 4, 6) || type == TRANSIT_WAKE && movesIntoSlot) &&
             (changes.any { it.kind == Kind.EXCHANGE } ||
                 (hasRecentSlotMove && changes.any { it.kind == Kind.HOME } &&
                     changes.any { it.kind == Kind.STATIONARY_DISPLAY })) &&
             changes.all { !it.rotates && it.kind != Kind.OTHER }
+
+    private const val TRANSIT_WAKE = 11
 }

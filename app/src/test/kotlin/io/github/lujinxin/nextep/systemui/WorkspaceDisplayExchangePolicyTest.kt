@@ -81,4 +81,15 @@ class WorkspaceDisplayExchangePolicyTest {
             assertFalse(WorkspaceDisplayExchangePolicy.shouldFinishImmediately(type, listOf(Change(Kind.EXCHANGE))))
         }
     }
+
+    @Test fun hyperOsWakeMoveIntoASlotFinishesImmediately() {
+        // Captured HyperOS: the task moves to the slot display, its display area reordered beside it.
+        assertTrue(WorkspaceDisplayExchangePolicy.shouldFinishImmediately(11,
+            listOf(Change(Kind.EXCHANGE), Change(Kind.STATIONARY_SLOT_DISPLAY)), movesIntoSlot = true))
+        assertTrue(WorkspaceDisplayExchangePolicy.shouldFinishImmediately(11,
+            listOf(Change(Kind.HOME), Change(Kind.STATIONARY_DISPLAY), Change(Kind.EXCHANGE)), movesIntoSlot = true))
+        // A screen wake moves no task into a slot display.
+        assertFalse(WorkspaceDisplayExchangePolicy.shouldFinishImmediately(11,
+            listOf(Change(Kind.EXCHANGE), Change(Kind.STATIONARY_SLOT_DISPLAY))))
+    }
 }

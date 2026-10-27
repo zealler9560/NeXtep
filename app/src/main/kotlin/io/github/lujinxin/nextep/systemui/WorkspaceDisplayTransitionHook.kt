@@ -124,25 +124,31 @@ internal object WorkspaceDisplayTransitionHook {
                 } else WorkspaceDisplayExchangePolicy.Kind.OTHER
             } else {
                 val flags = call(change, "getFlags") as? Int ?: return false
+                fun stationary() = when (val displayId = call(change, "getEndDisplayId") as? Int) {
+                    Display.DEFAULT_DISPLAY -> WorkspaceDisplayExchangePolicy.Kind.STATIONARY_DISPLAY
+                    null -> WorkspaceDisplayExchangePolicy.Kind.OTHER
+                    else -> if (isSlotDisplay(displayId)) WorkspaceDisplayExchangePolicy.Kind.STATIONARY_SLOT_DISPLAY
+                        else WorkspaceDisplayExchangePolicy.Kind.OTHER
+                }
                 when {
                     flags and FLAG_IS_WALLPAPER != 0 -> WorkspaceDisplayExchangePolicy.Kind.WALLPAPER
                     flags and FLAG_IS_DISPLAY != 0 && mode == TRANSIT_CHANGE &&
                         call(change, "getStartDisplayId") == call(change, "getEndDisplayId") &&
-                        call(change, "getStartAbsBounds") == call(change, "getEndAbsBounds") -> {
-                        val displayId = call(change, "getEndDisplayId") as? Int
-                        when {
-                            displayId == Display.DEFAULT_DISPLAY -> WorkspaceDisplayExchangePolicy.Kind.STATIONARY_DISPLAY
-                            displayId != null && isSlotDisplay(displayId) -> WorkspaceDisplayExchangePolicy.Kind.STATIONARY_SLOT_DISPLAY
-                            else -> WorkspaceDisplayExchangePolicy.Kind.OTHER
-                        }
-                    }
+                        call(change, "getStartAbsBounds") == call(change, "getEndAbsBounds") -> stationary()
+                    // HyperOS lists the display area a task arrives in, reordered to the front, beside it.
+                    flags and FLAG_IS_TASK_DISPLAY_AREA != 0 &&
+                        call(change, "getStartDisplayId") == call(change, "getEndDisplayId") -> stationary()
                     else -> WorkspaceDisplayExchangePolicy.Kind.OTHER
                 }
             }
             WorkspaceDisplayExchangePolicy.Change(kind, rotates)
         }
+        val movesIntoSlot = changes.any { change ->
+            val end = call(change!!, "getEndDisplayId") as? Int
+            call(change, "getTaskInfo") != null && end != null && end != call(change, "getStartDisplayId") && isSlotDisplay(end)
+        }
         val exchange = WorkspaceDisplayExchangePolicy.shouldFinishImmediately(
-            type, summaries, hasRecentSlotMove = TaskSurfaceCompat.hasRecentSlotMove(),
+            type, summaries, hasRecentSlotMove = TaskSurfaceCompat.hasRecentSlotMove(), movesIntoSlot = movesIntoSlot,
         )
         if (!exchange && summaries.any { it.kind == WorkspaceDisplayExchangePolicy.Kind.EXCHANGE }) {
             NeXtepLog.info("workspace_display_transition", "Exchange type=$type plays natively: " +
@@ -174,4 +180,6 @@ internal object WorkspaceDisplayTransitionHook {
     private const val TRANSIT_CHANGE = 6
     private const val FLAG_IS_WALLPAPER = 2
     private const val FLAG_IS_DISPLAY = 32
+    /** TransitionInfo.FLAG_IS_TASK_DISPLAY_AREA (hidden). */
+    private const val FLAG_IS_TASK_DISPLAY_AREA = 1 shl 23
 }

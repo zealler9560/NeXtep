@@ -16,6 +16,7 @@ import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 internal object WorkspaceMainBoundsHook {
     private val windowConfiguration by lazy { Configuration::class.java.getField("windowConfiguration") }
     @Volatile private var reported = false
+    @Volatile private var reportedKept = false
 
     fun install(module: XposedModule, loader: ClassLoader) {
         val method = loader.loadClass("com.android.server.wm.Task").declaredMethods.single {
@@ -44,10 +45,22 @@ internal object WorkspaceMainBoundsHook {
         if (requested != Rect(0, geometry.mainTaskTop, geometry.screenWidth, geometry.screenHeight)) return
         if (call(task, "getDisplayId") != 0 || call(task, "getActivityType") == ACTIVITY_TYPE_HOME) return
         val resolved = call(windowConfiguration.get(call(task, "getResolvedOverrideConfiguration")), "getBounds") as Rect
-        if (resolved.isEmpty) resolved.set(requested)
+        if (!resolved.isEmpty) return
+        resolved.set(requested)
+        if (!reportedKept) {
+            reportedKept = true
+            NeXtepLog.info("workspace_main_bounds", "Kept the shortened main canvas $requested")
+        }
     }
 
-    private fun call(target: Any, name: String): Any? = target.javaClass.getMethod(name).invoke(target)
+    private val methods = java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, java.lang.reflect.Method>()
+
+    /** Task.getDisplayId is package-private; public lookup alone failed on every call. */
+    private fun call(target: Any, name: String): Any? = methods.getOrPut(target.javaClass to name) {
+        generateSequence<Class<*>>(target.javaClass) { it.superclass }
+            .firstNotNullOf { type -> type.declaredMethods.firstOrNull { it.name == name && it.parameterCount == 0 } }
+            .apply { isAccessible = true }
+    }.invoke(target)
 
     private const val ACTIVITY_TYPE_HOME = 2
 }

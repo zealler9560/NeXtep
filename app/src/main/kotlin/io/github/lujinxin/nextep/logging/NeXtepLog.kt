@@ -13,6 +13,11 @@ object NeXtepLog {
 
     fun diagnostics(): String = synchronized(events) { events.joinToString("\n") }
 
+    fun recent(count: Int): String = synchronized(events) { events.toList().takeLast(count).joinToString("\n") }
+
+    /** Runs after each event: system_server mirrors its own into SystemUI's export through it. */
+    @Volatile var onEvent: (() -> Unit)? = null
+
     internal fun masked(message: String): String = URI.replace(message, "<uri>")
 
     fun debug(feature: String, message: String) = write(Log.DEBUG, feature, message, null)
@@ -33,5 +38,6 @@ object NeXtepLog {
             "feature=$feature sdk=${Build.VERSION.SDK_INT} message=$message"
         val output = if (error == null) enriched else "$enriched\n${Log.getStackTraceString(error)}"
         Log.println(priority, TAG, output)
+        onEvent?.invoke()
     }
 }

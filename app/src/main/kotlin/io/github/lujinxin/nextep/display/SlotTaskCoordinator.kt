@@ -1983,12 +1983,13 @@ class SlotTaskCoordinator(
                 setState(slotIndex, SlotState.Occupied(occupied.displayId, mainTask.taskId,
                     mainTask.component), "exchange submitted")
             } else setState(slotIndex, SlotState.Ready(occupied.displayId), "promotion submitted")
+            val submittedAt = SystemClock.uptimeMillis()
             deferredMove = DeferredMove(ready = ready@{
                 val current = taskRepository.runningTasks()
                 val promoted = current.firstOrNull { it.taskId == slotTask.taskId }
                 val demoted = mainTask?.let { old -> current.firstOrNull { it.taskId == old.taskId } }
                 val mainReady = promoted?.displayId == Display.DEFAULT_DISPLAY &&
-                    promoted.bounds == mainBounds && promoted.densityDpi == slotOriginal.densityDpi &&
+                    boundsSettled(promoted.bounds, mainBounds, submittedAt) && promoted.densityDpi == slotOriginal.densityDpi &&
                     promoted.windowingMode == slotOriginal.windowingMode
                 val sideReady = mainTask == null || demoted?.let {
                     it.displayId == occupied.displayId && it.bounds == slotBounds &&
@@ -2019,6 +2020,8 @@ class SlotTaskCoordinator(
                             return@ready false
                         }
                     }
+                    if (promoted?.bounds != mainBounds) NeXtepLog.info("slot_settle", "Shortened canvas did not stick; " +
+                        "taskId=${slotTask.taskId} takes the main pane at ${promoted?.bounds}")
                     mainTaskPresenter.presentTask(slotTask.taskId, geometryProvider()).getOrThrow()
                     true
                 }
@@ -2650,10 +2653,11 @@ class SlotTaskCoordinator(
         densityDpi: Int,
         windowingMode: Int,
     ) {
-        val deadline = SystemClock.uptimeMillis() + TASK_LAYOUT_TIMEOUT_MS
+        val since = SystemClock.uptimeMillis()
+        val deadline = since + TASK_LAYOUT_TIMEOUT_MS
         var snapshot = taskRepository.findTask(taskId)
         while (snapshot != null &&
-            (snapshot.bounds != bounds ||
+            (!boundsSettled(snapshot.bounds, bounds, since) ||
                 snapshot.densityDpi != densityDpi ||
                 snapshot.windowingMode != windowingMode) &&
             SystemClock.uptimeMillis() < deadline
@@ -2662,7 +2666,7 @@ class SlotTaskCoordinator(
             snapshot = taskRepository.findTask(taskId)
         }
         check(snapshot != null &&
-            snapshot.bounds == bounds &&
+            boundsSettled(snapshot.bounds, bounds, since) &&
             snapshot.densityDpi == densityDpi &&
             snapshot.windowingMode == windowingMode
         ) {
@@ -2670,6 +2674,15 @@ class SlotTaskCoordinator(
                 "actual=${snapshot?.bounds}/${snapshot?.densityDpi}/${snapshot?.windowingMode}"
         }
     }
+
+    /**
+     * AOSP resolves a fullscreen task's override bounds away (fill the parent). system_server keeps
+     * the shortened main canvas where it can; where it cannot, the full screen is as settled as the
+     * task gets: wait briefly for the canvas, then accept it rather than roll the move back.
+     */
+    private fun boundsSettled(actual: Rect?, expected: Rect, since: Long): Boolean = actual == expected ||
+        expected.top > 0 && actual == Rect(0, 0, expected.right, expected.bottom) &&
+            SystemClock.uptimeMillis() - since >= SHORTENED_CANVAS_GRACE_MS
 
     private fun clearSlotAssignment(index: Int) {
         val record = slotRecords[index]
@@ -2765,6 +2778,8 @@ class SlotTaskCoordinator(
         const val DISPLAY_MOVE_TIMEOUT_MS = 700L
         const val DISPLAY_MOVE_POLL_MS = 30L
         const val TASK_LAYOUT_TIMEOUT_MS = 900L
+        /** Inside both layout waits (900 ms, 1.5 s): long enough for a canvas that does stick. */
+        const val SHORTENED_CANVAS_GRACE_MS = 450L
         const val TASK_LAYOUT_POLL_MS = 30L
         const val SLOT_MISMATCH_GRACE_MS = 2_400L
         const val MIGRATION_RECOVERY_WINDOW_MS = 5_000L

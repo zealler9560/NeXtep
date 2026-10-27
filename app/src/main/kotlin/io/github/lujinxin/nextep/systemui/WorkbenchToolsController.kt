@@ -495,6 +495,7 @@ internal class WorkbenchToolsController(
                 it.write(runCatching { environment() }.getOrElse { "environment failed $it\n" })
                 it.write(NeXtepLog.diagnostics())
                 it.write("\n--- launcher\n${launcher ?: "no answer"}\n")
+                it.write("\n--- system_server\n${io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge.serverEvents(context) ?: "no events"}\n")
             }
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         }.onSuccess { message(R.string.workbench_exported) }.onFailure {
