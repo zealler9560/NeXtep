@@ -114,6 +114,9 @@ class TaskSwitcherView(
             if (!started) finishDrag()
             else {
                 textureView.alpha = 0.55f
+                // The drag owns the gesture now: a vertical move from here is the drag
+                // travelling along the rail, not the column scrolling.
+                parent?.requestDisallowInterceptTouchEvent(true)
             }
             started
         }
@@ -365,6 +368,7 @@ class TaskSwitcherView(
     private fun finishDrag() {
         if (!ownsDrag) return
         ownsDrag = false
+        parent?.requestDisallowInterceptTouchEvent(false)
         listener?.onSlotDragEnded()
         if (!busy && currentState is SlotState.Occupied) textureView.alpha = 1f
     }
