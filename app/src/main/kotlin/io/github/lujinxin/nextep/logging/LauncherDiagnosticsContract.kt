@@ -53,9 +53,12 @@ object LauncherDiagnosticsContract {
         if (!receiver.isOrderedBroadcast) return
         val identity = intent.getParcelableExtra(EXTRA_IDENTITY, PendingIntent::class.java)
         if (identity?.creatorPackage != TriggerBroadcastContract.SYSTEM_UI_PACKAGE) return
+        // On HyperOS the companion module answers in the same process; keep what an earlier responder wrote.
+        val earlier = receiver.getResultExtras(false)?.getString(EXTRA_EVENTS)?.takeIf { receiver.resultCode == RESULT_EVENTS }
+        val own = NeXtepLog.diagnostics().lines().takeLast(MAX_LINES).joinToString("\n")
         receiver.resultCode = RESULT_EVENTS
         receiver.setResultExtras(android.os.Bundle().apply {
-            putString(EXTRA_EVENTS, NeXtepLog.diagnostics().lines().takeLast(MAX_LINES).joinToString("\n"))
+            putString(EXTRA_EVENTS, listOfNotNull(earlier, own).joinToString("\n--- next responder\n"))
         })
     }
 }

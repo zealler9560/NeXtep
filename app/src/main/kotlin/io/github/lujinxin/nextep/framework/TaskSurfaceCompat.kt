@@ -73,13 +73,123 @@ object TaskSurfaceCompat {
     private val presentationAnimators = ConcurrentHashMap<Int, ValueAnimator>()
     private val transactionGuard = SurfaceTransactionGuard<Any>(
         appendOwnedTransforms = ::appendOwnedTransforms,
-        shouldCompose = { activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() ||
-            entryPresentations.isNotEmpty() || slotSurfaces.isNotEmpty() },
+        shouldCompose = { shellMayWrite() && (activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() ||
+            liftedRoots.isNotEmpty() || wallpaperResets.isNotEmpty() ||
+            entryPresentations.isNotEmpty() || slotSurfaces.isNotEmpty()) },
         onFailure = { NeXtepLog.warn("task_surface", "Native transaction fitting failed open", it) },
     )
 
-    fun <R> interceptTransactionApply(transaction: Any, proceed: () -> R): R =
-        transactionGuard.intercept(transaction, proceed)
+    fun <R> interceptTransactionApply(transaction: Any, proceed: () -> R): R {
+        countApply()
+        return transactionGuard.intercept(transaction, proceed)
+    }
+
+    @Volatile private var shellBusyUntil = 0L
+
+    /** Shell is about to write task leashes: a transition plays, or the organizer reports a task. */
+    fun markShellBusy() {
+        shellBusyUntil = SystemClock.uptimeMillis() + SHELL_BUSY_MS
+    }
+
+    /**
+     * Shell writes task leashes only in transitions and task callbacks. HyperOS's SystemUI applies
+     * transactions every frame for its own blur and panels; re-writing the pane transform into each
+     * dirtied the big task layers and recomposed them, frame after frame. There, compose only
+     * while Shell may write. ColorOS keeps the proven every-commit fitting.
+     */
+    private fun shellMayWrite(): Boolean = !desktopScaledHere || liftedRoots.isNotEmpty() ||
+        wallpaperResets.isNotEmpty() || SystemClock.uptimeMillis() < shellBusyUntil
+
+    private val applies = java.util.concurrent.atomic.AtomicInteger()
+    private val composed = java.util.concurrent.atomic.AtomicInteger()
+    @Volatile private var appliesSince = 0L
+
+    /** One line per ten seconds of commits while the pane shows: how many paid for fitting. */
+    private fun countApply() {
+        if (activePresentations.isEmpty()) return
+        applies.incrementAndGet()
+        val now = SystemClock.uptimeMillis()
+        if (appliesSince == 0L) appliesSince = now
+        if (now - appliesSince < STATS_WINDOW_MS) return
+        appliesSince = now
+        NeXtepLog.info("task_surface_transaction_guard", "Fitted ${composed.getAndSet(0)} of ${applies.getAndSet(0)} " +
+            "SystemUI commits in ${STATS_WINDOW_MS / 1000}s gated=$desktopScaledHere")
+    }
+
+    /** SystemUI, not a module in the launcher's process, scales the desktop (HyperOS). */
+    @Volatile var desktopScaledHere = false
+
+    private class LiftedRoot(val root: SurfaceControl, val offsetX: Float, val offsetY: Float,
+        val tasks: List<SurfaceControl>, val wallpapers: List<SurfaceControl>, val unscaled: SurfaceFrame, val since: Long)
+    private val liftedRoots = ConcurrentHashMap<Any, LiftedRoot>()
+    /** Wallpapers a finished lift left counter-scaled; the next commit, Shell's finish, puts them back. */
+    private val wallpaperResets = java.util.concurrent.ConcurrentLinkedQueue<SurfaceControl>()
+
+    /**
+     * HyperOS plays its desktop's window animations through Shell's recents handler, the launcher
+     * moving each window in its own full-screen space. Our scale on the task's leash then sat under
+     * the launcher's transform: a closing window flew to where its icon would be unscaled, under the
+     * sidebar. For the transition's length the pane transform moves onto its root, above every leash
+     * the launcher moves, and the tasks in it draw unscaled. Returns whether it did.
+     */
+    fun liftIntoTransitionRoot(transition: Any, info: Any, start: SurfaceControl.Transaction): Boolean = runCatching {
+        if (!desktopScaledHere) return@runCatching false
+        val changes = (invokeRequired(info, "getChanges") as List<*>).filterNotNull().filter { change ->
+            (invokeRequired(change, "getEndDisplayId") as Int) == Display.DEFAULT_DISPLAY
+        }
+        val leashes = changes.mapNotNull { invokeRequired(it, "getLeash") as? SurfaceControl }
+        val type = invokeRequired(info, "getType")
+        val pane = activePresentations.values.firstOrNull { presentation ->
+            leashes.any { sameSurface(it, presentation.leash as SurfaceControl) }
+        } ?: run {
+            if (activePresentations.isNotEmpty()) NeXtepLog.info("task_surface", "Transition type=$type moves no task in the main pane " +
+                "tasks=${changes.map { (invokeRequired(it, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.taskId }}")
+            return@runCatching false
+        }
+        // The wallpaper rides the root too (going home shows it); it keeps the screen, counter-scaled.
+        val wallpapers = changes.filter { (invokeRequired(it, "getFlags") as Int) and FLAG_IS_WALLPAPER != 0 }
+            .mapNotNull { invokeRequired(it, "getLeash") as? SurfaceControl }
+        val root = (0 until invokeRequired(info, "getRootCount") as Int).map { invokeRequired(info, "getRoot", it)!! }
+            .firstOrNull { invokeRequired(it, "getDisplayId") == Display.DEFAULT_DISPLAY } ?: return@runCatching false
+        val rootLeash = invokeRequired(root, "getLeash") as SurfaceControl
+        val offset = invokeRequired(root, "getOffset") as android.graphics.Point
+        val frame = rootFrame(SurfaceFrame(pane.scaleX, pane.scaleY, pane.positionX, pane.positionY), offset.x, offset.y)
+        liftedRoots[transition] = LiftedRoot(rootLeash, offset.x.toFloat(), offset.y.toFloat(),
+            leashes.filterNot { leash -> wallpapers.any { sameSurface(it, leash) } }, wallpapers,
+            unscaledUnder(SurfaceFrame(pane.scaleX, pane.scaleY, pane.positionX, pane.positionY)), SystemClock.uptimeMillis())
+        start.setScale(rootLeash, frame.scaleX, frame.scaleY).setPosition(rootLeash, frame.positionX, frame.positionY)
+        NeXtepLog.info("task_surface", "Lifted transition type=$type into the main pane through its root " +
+            "tasks=${changes.map { (invokeRequired(it, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.taskId }} wallpapers=${wallpapers.size}")
+        true
+    }.getOrElse { error ->
+        NeXtepLog.error("task_surface", "Transition root lift failed", error)
+        false
+    }
+
+    /** The transition ended, or its handler declined it: then [start] puts the root back before it shows. */
+    fun dropTransitionRoot(transition: Any, start: SurfaceControl.Transaction? = null) {
+        val lift = liftedRoots.remove(transition) ?: return
+        if (start != null && lift.root.isValid) start.setScale(lift.root, 1f, 1f).setPosition(lift.root, lift.offsetX, lift.offsetY)
+        wallpaperResets += lift.wallpapers
+        NeXtepLog.info("task_surface", "Transition root released after ${SystemClock.uptimeMillis() - lift.since}ms" +
+            if (start != null) " unplayed" else "")
+    }
+
+    /** Whether [surface] draws under a lifted root; a root Shell has released ends its lift. */
+    private fun lifted(surface: SurfaceControl): Boolean = liftedRoots.entries.any { (transition, lift) ->
+        if (!lift.root.isValid) {
+            dropTransitionRoot(transition)
+            false
+        } else lift.tasks.any { sameSurface(it, surface) }
+    }
+
+    private val sameSurfaceMethod: Method? by lazy {
+        runCatching { SurfaceControl::class.java.getMethod("isSameSurface", SurfaceControl::class.java) }.getOrNull()
+    }
+
+    /** Shell's leash and a transition's are separate objects for one layer. */
+    private fun sameSurface(a: SurfaceControl, b: SurfaceControl): Boolean =
+        a === b || runCatching { sameSurfaceMethod?.invoke(a, b) == true }.getOrDefault(false)
 
     fun initialize(classLoader: ClassLoader) {
         hostClassLoader = classLoader
@@ -94,6 +204,7 @@ object TaskSurfaceCompat {
     @Volatile var taskChangeListener: (() -> Unit)? = null
 
     fun observeTaskInfo(info: ActivityManager.RunningTaskInfo, leash: Any? = null) {
+        markShellBusy()
         TaskInfoCompat.readWindowState(info)?.let { observeTaskState(info.taskId, it) }
         if (leash != null) {
             observedLeashes[info.taskId] = leash
@@ -248,29 +359,33 @@ object TaskSurfaceCompat {
     fun capturePreview(taskId: Int, sourceCrop: android.graphics.Rect? = null,
                        scale: Float = 0.5f): android.graphics.Bitmap? = runCatching {
         val leash = findTaskLeash(taskId, requireMainDisplay = false) ?: return@runCatching null
-        val surfaceType = Class.forName("android.view.SurfaceControl")
-        val captureType = Class.forName("android.window.ScreenCaptureInternal")
-        val builderType = Class.forName("android.window.ScreenCaptureInternal\$LayerCaptureArgs\$Builder")
-        val builder = builderType.getConstructor(surfaceType).newInstance(leash)
         // A task leash has no bounds of its own; without a crop SurfaceFlinger rejects the
         // capture ("Boundless layer", EINVAL). The task's bounds on its display are the crop.
         val crop = sourceCrop ?: observedStates[taskId]?.bounds?.takeIf { !it.isEmpty }
             ?: findLiveTaskState(taskId)?.bounds?.takeIf { !it.isEmpty }
-        if (crop != null) {
-            builderType.getMethod("setSourceCrop", android.graphics.Rect::class.java)
-                .invoke(builder, android.graphics.Rect(0, 0, crop.width(), crop.height()))
-        }
+        captureLayers(leash, crop?.let { android.graphics.Rect(0, 0, it.width(), it.height()) }, scale)
+    }.onFailure { NeXtepLog.warn("task_preview", "Task preview unavailable taskId=$taskId", it) }.getOrNull()
+
+    /** A task's own layer wherever it is shown; a pane whose display composes nothing mirrors it. */
+    fun taskLeash(taskId: Int): SurfaceControl? = findTaskLeash(taskId, requireMainDisplay = false) as? SurfaceControl
+
+    /** [surface]'s children at [scale]; a layer without bounds of its own needs [crop]. Throws when unavailable. */
+    fun captureLayers(surface: Any, crop: android.graphics.Rect?, scale: Float): android.graphics.Bitmap? {
+        val surfaceType = Class.forName("android.view.SurfaceControl")
+        val captureType = Class.forName("android.window.ScreenCaptureInternal")
+        val builderType = Class.forName("android.window.ScreenCaptureInternal\$LayerCaptureArgs\$Builder")
+        val builder = builderType.getConstructor(surfaceType).newInstance(surface)
+        if (crop != null) builderType.getMethod("setSourceCrop", android.graphics.Rect::class.java).invoke(builder, crop)
         builderType.getMethod("setFrameScale", Float::class.javaPrimitiveType).invoke(builder, scale)
         builderType.getMethod("setChildrenOnly", Boolean::class.javaPrimitiveType).invoke(builder, true)
         val args = builderType.getMethod("build").invoke(builder)
         val buffer = captureType.methods.firstOrNull {
             it.name == "captureLayers" && it.parameterCount == 1 && it.parameterTypes[0].isInstance(args)
-        }?.invoke(null, args) ?: return@runCatching null
-        val bitmap = buffer.javaClass.getMethod("asBitmap").invoke(buffer) as? android.graphics.Bitmap
-            ?: return@runCatching null
-        try { bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
+        }?.invoke(null, args) ?: return null
+        val bitmap = buffer.javaClass.getMethod("asBitmap").invoke(buffer) as? android.graphics.Bitmap ?: return null
+        return try { bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
         finally { bitmap.recycle() }
-    }.onFailure { NeXtepLog.warn("task_preview", "Task preview unavailable taskId=$taskId", it) }.getOrNull()
+    }
 
     /** Whether the task shows a frame laid out for its current bounds; null when it cannot be captured. */
     fun showsLaidOutFrame(taskId: Int, crop: android.graphics.Rect? = null): Boolean? =
@@ -553,6 +668,15 @@ object TaskSurfaceCompat {
     }
 
     private fun appendOwnedTransforms(transaction: Any) {
+        composed.incrementAndGet()
+        val native = transaction as SurfaceControl.Transaction
+        // Shell lays a wallpaper out at its root's origin and WM never moves it back; restore exactly that.
+        generateSequence { wallpaperResets.poll() }.filter { it.isValid }.forEach { native.setScale(it, 1f, 1f).setPosition(it, 0f, 0f) }
+        liftedRoots.values.forEach { lift ->
+            if (lift.root.isValid) lift.wallpapers.filter { it.isValid }.forEach {
+                native.setScale(it, lift.unscaled.scaleX, lift.unscaled.scaleY).setPosition(it, lift.unscaled.positionX, lift.unscaled.positionY)
+            }
+        }
         // WM Shell's animation and finish transactions can be queued before presentation.
         // Fit at commit, after their writes, so no identity-sized frame reaches the display
         // between polling corrections. Use the current animation frame, not its final target.
@@ -609,9 +733,10 @@ object TaskSurfaceCompat {
         return observedLeashes[taskId]
     }
 
-    private fun writeFrame(transaction: Any, leash: Any, frame: SurfaceFrame) {
+    private fun writeFrame(transaction: Any, leash: Any, target: SurfaceFrame) {
         val nativeTransaction = transaction as SurfaceControl.Transaction
         val surface = leash as SurfaceControl
+        val frame = if (liftedRoots.isNotEmpty() && lifted(surface)) target.copy(scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f) else target
         // Keep native visibility, fade, layer order and parenting intact.
         nativeTransaction.setCrop(surface, frame.crop)
             .setScale(surface, frame.scaleX, frame.scaleY)
@@ -674,7 +799,8 @@ object TaskSurfaceCompat {
         val access = organizerAccess()
         val appearedInfo = synchronized(access.lock) {
             invokeRequired(access.tasks, "get", taskId)
-        } ?: return@runCatching null // Shell has not reported the task yet: a normal transient state.
+        } ?: nestedHomeRoot(access, taskId)
+            ?: return@runCatching null // Shell has not reported the task yet: a normal transient state.
         // Shell's TaskAppearedInfo is delivered asynchronously. After a display move its
         // cached TaskInfo can still describe the slot, causing a successful promotion to
         // roll back. The same cache can also outlive a move into an OEM floating window.
@@ -694,6 +820,27 @@ object TaskSurfaceCompat {
     }.onFailure { error ->
         NeXtepLog.warn("task_surface", "Task leash lookup failed taskId=$taskId", error)
     }.getOrNull()
+
+    /**
+     * HyperOS nests the desktop: root task 1 holds home task 2, and Shell organizes only the root,
+     * so a lookup by the home task's own id never finds a leash. The root's leash moves the desktop.
+     */
+    @Suppress("DEPRECATION")
+    private fun nestedHomeRoot(access: OrganizerAccess, taskId: Int): Any? {
+        val leaf = activityManager?.getRunningTasks(MAX_TASK_QUERY)?.firstOrNull { it.taskId == taskId } ?: return null
+        if (!TaskInfoCompat.isHome(leaf)) return null
+        val displayId = TaskInfoCompat.readWindowState(leaf)?.displayId ?: return null
+        val organized = synchronized(access.lock) {
+            (0 until invokeRequired(access.tasks, "size") as Int).mapNotNull { invokeRequired(access.tasks, "valueAt", it) }
+        }
+        val root = organized.firstOrNull { appeared ->
+            val info = invokeRequired(appeared, "getTaskInfo") as? ActivityManager.RunningTaskInfo
+            info != null && TaskInfoCompat.isHome(info) && TaskInfoCompat.readWindowState(info)?.displayId == displayId
+        } ?: return null
+        NeXtepLog.info("task_surface", "Home taskId=$taskId is nested; its root " +
+            "taskId=${(invokeRequired(root, "getTaskInfo") as ActivityManager.RunningTaskInfo).taskId} carries the leash")
+        return root
+    }
 
     @Suppress("DEPRECATION")
     private fun findLiveTaskState(taskId: Int): TaskInfoCompat.WindowState? {
@@ -825,7 +972,22 @@ object TaskSurfaceCompat {
     private const val ENTRY_EXPECTATION_MS = 3_000L
     private const val REPOSITION_DURATION_MS = 260L
     private const val RESTORE_DURATION_MS = 180L
+    /** Longer than any default Shell animation; a launcher-driven one keeps composing through its lift. */
+    private const val SHELL_BUSY_MS = 3_000L
+    private const val STATS_WINDOW_MS = 10_000L
+    /** TransitionInfo.FLAG_IS_WALLPAPER (hidden). */
+    private const val FLAG_IS_WALLPAPER = 1 shl 1
 }
+
+/** Undoes the pane for a child laid out at the root's origin, such as the wallpaper: it stays on the whole screen. */
+internal fun unscaledUnder(pane: TaskSurfaceCompat.SurfaceFrame) = TaskSurfaceCompat.SurfaceFrame(
+    1f / pane.scaleX, 1f / pane.scaleY, -pane.positionX / pane.scaleX, -pane.positionY / pane.scaleY,
+)
+
+/** The root's own transform: its children sit in display space from [offsetX],[offsetY]; the pane takes them. */
+internal fun rootFrame(pane: TaskSurfaceCompat.SurfaceFrame, offsetX: Int, offsetY: Int) = TaskSurfaceCompat.SurfaceFrame(
+    pane.scaleX, pane.scaleY, pane.positionX + pane.scaleX * offsetX, pane.positionY + pane.scaleY * offsetY,
+)
 
 /**
  * An app still relaying out after a size change shows bare edges (no buffer there yet) or a blank

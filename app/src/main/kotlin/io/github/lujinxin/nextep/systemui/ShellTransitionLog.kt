@@ -18,6 +18,7 @@ internal object ShellTransitionLog {
             method.isAccessible = true
             module.hook(method).intercept(object : XposedInterface.Hooker {
                 override fun intercept(chain: XposedInterface.Chain): Any? {
+                    io.github.lujinxin.nextep.framework.TaskSurfaceCompat.markShellBusy()
                     val handler = chain.proceed()
                     if (SystemUiRuntime.isWorkspaceActive()) runCatching {
                         log(chain.args.firstOrNull { it?.javaClass?.name == TRANSITION_INFO }, handler)
@@ -49,14 +50,15 @@ internal object ShellTransitionLog {
 
     fun isKeyguardGoingAway(flags: Int): Boolean = flags and TRANSIT_FLAG_KEYGUARD_GOING_AWAY != 0
 
-    private fun log(info: Any?, handler: Any?) {
+    /** [how]: "handler" for one Shell picked by asking each, "preset" for one that claimed the request. */
+    internal fun log(info: Any?, handler: Any?, how: String = "handler") {
         info ?: return
         val changes = (call(info, "getChanges") as? List<*>).orEmpty().joinToString(",") { change ->
             if (change == null) return@joinToString "?"
             val task = call(change, "getTaskInfo") as? ActivityManager.RunningTaskInfo
             "${call(change, "getMode")}/${task?.taskId ?: "-"}/${call(change, "getStartDisplayId")}>${call(change, "getEndDisplayId")}"
         }
-        NeXtepLog.info("shell_transition", "type=${call(info, "getType")} handler=${handler?.javaClass?.name?.substringAfterLast('.')} " +
+        NeXtepLog.info("shell_transition", "type=${call(info, "getType")} $how=${handler?.javaClass?.name?.substringAfterLast('.')} " +
             "changes=[$changes]")
     }
 

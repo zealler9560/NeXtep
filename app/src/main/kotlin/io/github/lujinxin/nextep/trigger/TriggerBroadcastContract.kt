@@ -67,6 +67,8 @@ object TriggerBroadcastContract {
     const val SYSTEM_UI_PACKAGE = "com.android.systemui"
     const val MODULE_PACKAGE = "io.github.yishisanren.panes"
     const val ASSISTANT_SCREEN_PACKAGE = "com.coloros.assistantscreen"
+    /** Launchers this module hooks itself (ColorOS); any other desktop answers only through a companion. */
+    val OWN_LAUNCHER_PACKAGES = setOf("com.android.launcher", "com.oplus.launcher")
 
     fun queryIntent(targetPackage: String): Intent =
         targetIntent(ACTION_QUERY_WORKSPACE, targetPackage)
@@ -148,6 +150,9 @@ object TriggerBroadcastContract {
 
     private const val HOME_PACKAGE_TTL_MS = 60_000L
 
+    // The expected protocol rides along, so a companion responder (hyperos-shim) echoes the
+    // version this build wants instead of a number baked in at its own build time.
     private fun targetIntent(action: String, targetPackage: String): Intent =
         Intent(action).setPackage(targetPackage)
+            .putExtra(EXTRA_RUNTIME_PROTOCOL_VERSION, RUNTIME_PROTOCOL_VERSION)
 }

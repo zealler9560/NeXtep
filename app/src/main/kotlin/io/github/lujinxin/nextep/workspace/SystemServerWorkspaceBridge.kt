@@ -47,6 +47,7 @@ object SystemServerWorkspaceBridge {
                 resolver.registerContentObserver(Settings.Global.getUriFor(PRIVATE_TASKS_KEY), false, observer)
                 resolver.registerContentObserver(Settings.Global.getUriFor(WIDE_DISPLAY_KEY), false, observer)
                 refresh()
+                NeXtepLog.mirror(context, NeXtepLog.SYSTEM_SERVER_EVENTS_KEY)
             }.onFailure {
                 geometryObservationStarted.set(false)
                 NeXtepLog.warn("system_server_bridge", "Geometry observation unavailable", it)
@@ -55,6 +56,7 @@ object SystemServerWorkspaceBridge {
     }
 
     fun observedActiveGeometry(): WorkspaceGeometry? = observedGeometry
+
 
     /** system_server hot paths: RAM only, never a Settings IPC under the WM lock. */
     fun observedActive(context: Context): Boolean {

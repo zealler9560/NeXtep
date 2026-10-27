@@ -417,6 +417,67 @@ class SlotTaskCoordinator(
         slots[index].dropStaleFrame()
     }
 
+    private val outputChecks = slots.indices.map { index -> Runnable { checkOutput(index) } }
+    private val outputCheckAttempts = IntArray(slots.size)
+
+    /**
+     * A pane whose app runs but whose output layer never received a frame: on HyperOS two of four
+     * panes stayed black this way (probe ERROR_SOURCE_NO_DATA while the app drew at 30 fps). The
+     * reconnect that fixed the same symptom after window moves on ColorOS is tried here as well.
+     */
+    private fun checkOutput(index: Int) {
+        if (!active || suspended) return
+        val taskId = (slotRecords[index].state as? SlotState.Occupied)?.taskId ?: return
+        if (slots[index].mirrorsTask(taskId)) return
+        val attempt = outputCheckAttempts[index] + 1
+        if (attempt > OUTPUT_CHECK_ATTEMPTS) return
+        if (transitionInProgress || slots[index].isPaused()) {
+            handler.postDelayed(outputChecks[index], OUTPUT_CHECK_DELAY_MS)
+            return
+        }
+        outputCheckAttempts[index] = attempt
+        // This SystemUI has seen a pane display compose nothing: mirror at once, no black pane first.
+        if (mirrorPanes) return mirrorPane(index, taskId)
+        slots[index].ensureOutputShowing { rebound ->
+            // A pane that shows its app is described too, to set against the black ones.
+            if (!rebound) {
+                if (attempt == 1) NeXtepLog.info("slot_output", "Output ok ${slots[index].describe(taskId)}")
+                return@ensureOutputShowing
+            }
+            NeXtepLog.info("slot_output", "Blank output slot=$index rebound attempt=$attempt ${slots[index].describe(taskId)}")
+            // A reconnect cured ColorOS's stale output. Blank again although the app drew: the display
+            // composes nothing for its output (HyperOS), so the pane shows the app's own layers.
+            if (attempt >= 2 && SlotDiagnostics.taskDrew(taskId) == true) {
+                mirrorPanes = true
+                NeXtepLog.info("slot_mirror", "Pane displays compose no frames here; panes mirror their apps from now on")
+                return@ensureOutputShowing mirrorPane(index, taskId)
+            }
+            handler.postDelayed(outputChecks[index], OUTPUT_CHECK_DELAY_MS * attempt)
+        }
+    }
+
+    /** Set once a pane display composed nothing although its app drew; for this SystemUI's lifetime. */
+    private var mirrorPanes = false
+
+    private fun mirrorPane(index: Int, taskId: Int) {
+        if (!slots[index].mirrorTask(taskId)) {
+            // The task's leash may not be known yet; the remaining attempts try again.
+            handler.postDelayed(outputChecks[index], OUTPUT_CHECK_DELAY_MS)
+            return
+        }
+        handler.postDelayed({
+            if (slots[index].mirrorsTask(taskId)) {
+                NeXtepLog.info("slot_mirror", "Shows slot=$index taskId=$taskId pane=${slots[index].captureShown()} app=${SlotDiagnostics.taskLayer(taskId)}")
+            }
+        }, MIRROR_VERIFY_DELAY_MS)
+    }
+
+    /** Every pane as it is now, for the diagnostics export: a black pane is usually on screen when it is taken. */
+    fun logSnapshot() = slots.indices.forEach { index ->
+        val state = slotRecords[index].state
+        NeXtepLog.info("slot_snapshot", "${state.javaClass.simpleName} ${slots[index].describe((state as? SlotState.Occupied)?.taskId)}")
+    }
+
     private val pauseChecks = slots.indices.map { index -> Runnable { evaluatePause(index) } }
     /** The last reason each pane stayed live, so a lasting reason is logged once. */
     private val pauseBlockers = arrayOfNulls<String>(slots.size)
@@ -1937,12 +1998,13 @@ class SlotTaskCoordinator(
                 setState(slotIndex, SlotState.Occupied(occupied.displayId, mainTask.taskId,
                     mainTask.component), "exchange submitted")
             } else setState(slotIndex, SlotState.Ready(occupied.displayId), "promotion submitted")
+            val submittedAt = SystemClock.uptimeMillis()
             deferredMove = DeferredMove(ready = ready@{
                 val current = taskRepository.runningTasks()
                 val promoted = current.firstOrNull { it.taskId == slotTask.taskId }
                 val demoted = mainTask?.let { old -> current.firstOrNull { it.taskId == old.taskId } }
                 val mainReady = promoted?.displayId == Display.DEFAULT_DISPLAY &&
-                    promoted.bounds == mainBounds && promoted.densityDpi == slotOriginal.densityDpi &&
+                    boundsSettled(promoted.bounds, mainBounds, submittedAt) && promoted.densityDpi == slotOriginal.densityDpi &&
                     promoted.windowingMode == slotOriginal.windowingMode
                 val sideReady = mainTask == null || demoted?.let {
                     it.displayId == occupied.displayId && it.bounds == slotBounds &&
@@ -1973,6 +2035,8 @@ class SlotTaskCoordinator(
                             return@ready false
                         }
                     }
+                    if (promoted?.bounds != mainBounds) NeXtepLog.info("slot_settle", "Shortened canvas did not stick; " +
+                        "taskId=${slotTask.taskId} takes the main pane at ${promoted?.bounds}")
                     mainTaskPresenter.presentTask(slotTask.taskId, geometryProvider()).getOrThrow()
                     true
                 }
@@ -2604,10 +2668,11 @@ class SlotTaskCoordinator(
         densityDpi: Int,
         windowingMode: Int,
     ) {
-        val deadline = SystemClock.uptimeMillis() + TASK_LAYOUT_TIMEOUT_MS
+        val since = SystemClock.uptimeMillis()
+        val deadline = since + TASK_LAYOUT_TIMEOUT_MS
         var snapshot = taskRepository.findTask(taskId)
         while (snapshot != null &&
-            (snapshot.bounds != bounds ||
+            (!boundsSettled(snapshot.bounds, bounds, since) ||
                 snapshot.densityDpi != densityDpi ||
                 snapshot.windowingMode != windowingMode) &&
             SystemClock.uptimeMillis() < deadline
@@ -2616,7 +2681,7 @@ class SlotTaskCoordinator(
             snapshot = taskRepository.findTask(taskId)
         }
         check(snapshot != null &&
-            snapshot.bounds == bounds &&
+            boundsSettled(snapshot.bounds, bounds, since) &&
             snapshot.densityDpi == densityDpi &&
             snapshot.windowingMode == windowingMode
         ) {
@@ -2624,6 +2689,15 @@ class SlotTaskCoordinator(
                 "actual=${snapshot?.bounds}/${snapshot?.densityDpi}/${snapshot?.windowingMode}"
         }
     }
+
+    /**
+     * AOSP resolves a fullscreen task's override bounds away (fill the parent). system_server keeps
+     * the shortened main canvas where it can; where it cannot, the full screen is as settled as the
+     * task gets: wait briefly for the canvas, then accept it rather than roll the move back.
+     */
+    private fun boundsSettled(actual: Rect?, expected: Rect, since: Long): Boolean = actual == expected ||
+        expected.top > 0 && actual == Rect(0, 0, expected.right, expected.bottom) &&
+            SystemClock.uptimeMillis() - since >= SHORTENED_CANVAS_GRACE_MS
 
     private fun clearSlotAssignment(index: Int) {
         val record = slotRecords[index]
@@ -2648,6 +2722,15 @@ class SlotTaskCoordinator(
             // Past the card's fade-out.
             handler.removeCallbacks(staleFrameChecks[index])
             handler.postDelayed(staleFrameChecks[index], STALE_FRAME_DELAY_MS)
+        }
+        if (occupant != (previous as? SlotState.Occupied)?.taskId) {
+            // A mirror shows one task; a new occupant, or none, takes it down.
+            slots[index].clearMirror()
+            handler.removeCallbacks(outputChecks[index])
+        }
+        if (occupant != null && occupant != (previous as? SlotState.Occupied)?.taskId) {
+            outputCheckAttempts[index] = 0
+            handler.postDelayed(outputChecks[index], if (mirrorPanes) MIRROR_DELAY_MS else OUTPUT_CHECK_DELAY_MS)
         }
         if (pauseRules != null && occupant != (previous as? SlotState.Occupied)?.taskId) {
             slots[index].resume("pane changed")
@@ -2682,6 +2765,12 @@ class SlotTaskCoordinator(
         /** A check that met an exchange or launch looks again this soon after. */
         const val PAUSE_BUSY_RETRY_MS = 500L
         const val STALE_FRAME_DELAY_MS = 400L
+        /** A new occupant has this long to draw its first frame before a blank output is reconnected. */
+        const val OUTPUT_CHECK_DELAY_MS = 1_500L
+        const val OUTPUT_CHECK_ATTEMPTS = 3
+        /** Past the move's transition, when Shell has reported the task on its pane display. */
+        const val MIRROR_DELAY_MS = 350L
+        const val MIRROR_VERIFY_DELAY_MS = 700L
         const val SETTLE_DELAY_MS = 700L
         /** The rail's entry animation is 240 ms; retained tasks come back once it has settled. */
         const val REBIND_AFTER_ENTRY_MS = 320L
@@ -2704,6 +2793,8 @@ class SlotTaskCoordinator(
         const val DISPLAY_MOVE_TIMEOUT_MS = 700L
         const val DISPLAY_MOVE_POLL_MS = 30L
         const val TASK_LAYOUT_TIMEOUT_MS = 900L
+        /** Inside both layout waits (900 ms, 1.5 s): long enough for a canvas that does stick. */
+        const val SHORTENED_CANVAS_GRACE_MS = 450L
         const val TASK_LAYOUT_POLL_MS = 30L
         const val SLOT_MISMATCH_GRACE_MS = 2_400L
         const val MIGRATION_RECOVERY_WINDOW_MS = 5_000L

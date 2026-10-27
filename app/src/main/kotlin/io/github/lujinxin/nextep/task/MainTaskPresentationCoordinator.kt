@@ -75,7 +75,11 @@ class MainTaskPresentationCoordinator(context: Context) {
         geometry: WorkspaceGeometry,
         homePackage: String?,
     ): Result<Unit> {
-        if (task.component.packageName == homePackage) {
+        val home = task.component.packageName == homePackage
+        // The launcher animates its windows unscaled unless a module scales the desktop in its process.
+        TaskSurfaceCompat.desktopScaledHere = homePackage != null &&
+            homePackage !in TriggerBroadcastContract.OWN_LAUNCHER_PACKAGES && launcherAnswers != true
+        if (home && launcherOwnsHome(homePackage)) {
             NeXtepLog.info("main_task_presenter", "Foreground task is HOME; Launcher owns transform")
             notifyHomePresented()
             return Result.success(Unit)
@@ -108,6 +112,10 @@ class MainTaskPresentationCoordinator(context: Context) {
         val surfaceResult = applyMainBounds(task, geometry, fresh).mapCatching {
             surfacePresenter.present(task.taskId, main, source).getOrThrow()
         }
+        if (surfaceResult.isSuccess && home) {
+            NeXtepLog.info("main_task_presenter", "Presented HOME taskId=${task.taskId}; no launcher module scales it")
+            notifyHomePresented()
+        }
         if (surfaceResult.isSuccess) {
             if (source != null) {
                 entrySource = null
@@ -137,7 +145,7 @@ class MainTaskPresentationCoordinator(context: Context) {
         val foreground = tasks.firstOrNull { it.displayId == Display.DEFAULT_DISPLAY }
             ?: error("No foreground Display 0 task")
         val homePackage = TriggerBroadcastContract.resolveHomePackage(applicationContext)
-        if (foreground.component.packageName == homePackage) {
+        if (foreground.component.packageName == homePackage && launcherOwnsHome(homePackage)) {
             release(tasks).getOrThrow()
             notifyHomePresented()
             return@runCatching
@@ -243,7 +251,9 @@ class MainTaskPresentationCoordinator(context: Context) {
      */
     private fun applyMainBounds(task: TaskRepository.TaskSnapshot, geometry: WorkspaceGeometry,
                                 fresh: Boolean = false): Result<Unit> {
-        val height = geometry.mainTaskHeight
+        // The desktop keeps its full height, as on ColorOS where its own launcher scales it.
+        val home = task.component.packageName == TriggerBroadcastContract.resolveHomePackage(applicationContext)
+        val height = if (home) 0 else geometry.mainTaskHeight
         if (height <= 0) {
             if (shortenedTaskId == task.taskId) shortenedTaskId = null
             return clearFullscreenBounds(task, fresh)
@@ -305,6 +315,47 @@ class MainTaskPresentationCoordinator(context: Context) {
         const val ENTRY_WAIT_MS = 1_500L
         /** Covers the launch polling; an icon tap older than this no longer explains a new task. */
         const val ENTRY_SOURCE_TTL_MS = 3_000L
+        /** A companion that starts later (launcher restart, module enabled) is found on the next entry. */
+        const val LAUNCHER_PROBE_MS = 30_000L
+        /** How hyperos-shim (2.8+) opens its diagnostics answer. */
+        const val COMPANION_MARK = "NeXtepHomeShim"
+    }
+
+    private var probedHome: String? = null
+    private var probedAt = 0L
+    private var probing = false
+    private var launcherAnswers: Boolean? = null
+
+    /**
+     * Whether a launcher module shrinks the desktop itself: ColorOS's launchers carry this module's
+     * own hook. Elsewhere (HyperOS) one counts when it answers in the launcher's process; HyperOS's
+     * desktop went unscaled with no module running there, so SystemUI then scales the home task like
+     * any app. Until the first answer the launcher keeps it, so a working companion is not doubled.
+     */
+    internal fun launcherOwnsHome(homePackage: String?): Boolean {
+        if (homePackage == null || homePackage in TriggerBroadcastContract.OWN_LAUNCHER_PACKAGES) return true
+        val now = SystemClock.uptimeMillis()
+        if (probedHome != homePackage) {
+            probedHome = homePackage
+            probedAt = 0L
+            launcherAnswers = null
+        }
+        if (!probing && (probedAt == 0L || now - probedAt > LAUNCHER_PROBE_MS)) {
+            probing = true
+            probedAt = now
+            io.github.lujinxin.nextep.logging.LauncherDiagnosticsContract.query(applicationContext) { events ->
+                probing = false
+                // The companion module scales the desktop and names itself; this module's own probe there only reports.
+                val answers = events?.contains(COMPANION_MARK) == true
+                if (answers != launcherAnswers) {
+                    NeXtepLog.info("main_task_presenter", "Launcher $homePackage " +
+                        if (answers) "has the companion module; it scales the desktop"
+                        else "has no companion module answering; SystemUI scales the desktop")
+                }
+                launcherAnswers = answers
+            }
+        }
+        return launcherAnswers != false
     }
 
     private fun isMainFullscreen(task: TaskRepository.TaskSnapshot): Boolean =

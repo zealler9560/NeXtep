@@ -3,6 +3,7 @@ package io.github.lujinxin.nextep.xposed
 import android.util.Log
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.launcher.ColorOsLauncherHook
+import io.github.lujinxin.nextep.launcher.MiuiHomeProbe
 import io.github.lujinxin.nextep.multiapp.OplusMultiAppHook
 import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.safety.EmergencyDisable
@@ -17,7 +18,10 @@ import io.github.libxposed.api.XposedModuleInterface.SystemServerStartingParam
 class NeXtepHookEntry : XposedModule() {
     override fun onModuleLoaded(param: ModuleLoadedParam) {
         super.onModuleLoaded(param)
-        NeXtepLog.info("module", "NeXtepHookEntry loaded; systemServer=${param.isSystemServer}")
+        // Which Xposed framework runs this: on HyperOS the companion module (legacy API) may not load where this one does.
+        val framework = runCatching { "$frameworkName $frameworkVersion ($frameworkVersionCode) api=$apiVersion props=$frameworkProperties" }
+            .getOrElse { "unknown" }
+        NeXtepLog.info("module", "NeXtepHookEntry loaded; systemServer=${param.isSystemServer} framework=$framework")
         if (param.isSystemServer) {
             log(Log.INFO, "NeXtep", "system_server module generation loaded")
         }
@@ -51,6 +55,12 @@ class NeXtepHookEntry : XposedModule() {
         }
 
         if (packageName == "io.github.yishisanren.panes") {
+            return
+        }
+
+        if (packageName == "com.miui.home") {
+            // HyperOS: the desktop transform is the companion module's; this only reports from inside the launcher.
+            if (!EmergencyDisable.isRequested()) MiuiHomeProbe.install(this)
             return
         }
 

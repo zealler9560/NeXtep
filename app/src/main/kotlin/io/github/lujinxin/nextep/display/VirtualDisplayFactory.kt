@@ -42,7 +42,7 @@ class VirtualDisplayFactory(context: Context) {
             NeXtepLog.info(
                 "virtual_display",
                 "Created slot=$index displayId=${display.display.displayId} geometry=$geometry " +
-                    "requestedFps=$SLOT_REFRESH_RATE displayFps=${display.display.refreshRate}",
+                    "requestedFps=$SLOT_REFRESH_RATE displayFps=${display.display.refreshRate} info=${display.display}",
             )
         }.onFailure { error ->
             NeXtepLog.error("virtual_display", "Creation failed slot=$index geometry=$geometry", error)

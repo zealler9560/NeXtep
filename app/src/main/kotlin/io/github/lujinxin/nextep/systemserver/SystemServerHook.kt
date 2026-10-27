@@ -26,6 +26,7 @@ object SystemServerHook {
         HookGuard.run("workspace_content_drag") { WorkspaceContentDragHook.install(module, classLoader) }
         HookGuard.run("workspace_navigation") { WorkspaceNavigationBarHook.install(module, classLoader) }
         HookGuard.run("slot_native_layout") { WorkspaceSlotNativeLayoutHook.install(module, classLoader) }
+        HookGuard.run("workspace_main_bounds") { WorkspaceMainBoundsHook.install(module, classLoader) }
         val workspaceTasksInstalled = HookGuard.run("workspace_task_surface") {
             WorkspaceTaskSurfaceHook.install(module, classLoader)
         }

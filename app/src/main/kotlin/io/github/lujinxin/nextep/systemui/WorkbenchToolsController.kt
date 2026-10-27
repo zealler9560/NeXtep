@@ -450,6 +450,26 @@ internal class WorkbenchToolsController(
         return true
     }
 
+    /** What the module depends on outside SystemUI: the ROM, the home app and, on HyperOS, the companion module. */
+    private fun environment(): String {
+        fun prop(key: String) = runCatching {
+            Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, key) as String
+        }.getOrDefault("?")
+        fun app(name: String) = runCatching {
+            val info = context.packageManager.getPackageInfo(name, 0)
+            "$name ${info.versionName} (${info.longVersionCode}) enabled=${info.applicationInfo?.enabled}"
+        }.getOrDefault("$name not installed")
+        val home = context.packageManager.resolveActivity(
+            android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME),
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+        )?.activityInfo
+        val ime = runCatching { android.provider.Settings.Global.getString(context.contentResolver, "nextepshim_ime_state_v1") }.getOrNull()
+        return "hyperos=${prop("ro.mi.os.version.name")} miui=${prop("ro.miui.ui.version.name")} " +
+            "incremental=${prop("ro.build.version.incremental")}\n" +
+            "home=${home?.packageName?.let(::app)} activity=${home?.name}\n" +
+            "shim=${app("io.muse.nextepshim")} imeState=${ime?.take(160)}\n"
+    }
+
     private fun writeDiagnostics(launcher: String?): Boolean {
         // No logcat scraping: export only this module's bounded event metadata.
         val name = string(R.string.diagnostics_file_name,
@@ -472,8 +492,12 @@ internal class WorkbenchToolsController(
                 val boot = System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()
                 it.write("Panes=${panes?.versionName} (${panes?.longVersionCode}) installed=${panes?.lastUpdateTime?.let(::time)} " +
                     "boot=${time(boot)}\ndevice=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} rom=${android.os.Build.DISPLAY}\n")
+                it.write(runCatching { environment() }.getOrElse { "environment failed $it\n" })
                 it.write(NeXtepLog.diagnostics())
                 it.write("\n--- launcher\n${launcher ?: "no answer"}\n")
+                it.write("\n--- system_server\n${NeXtepLog.mirrored(context, NeXtepLog.SYSTEM_SERVER_EVENTS_KEY) ?: "no events"}\n")
+                // The launcher-side probe writes this itself; empty means the module is not running in the launcher.
+                it.write("\n--- launcher (mirrored)\n${NeXtepLog.mirrored(context, NeXtepLog.LAUNCHER_EVENTS_KEY) ?: "no events"}\n")
             }
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         }.onSuccess { message(R.string.workbench_exported) }.onFailure {

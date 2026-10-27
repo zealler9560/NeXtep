@@ -14,6 +14,7 @@ object TaskInfoCompat {
     private val configurationMember = member(listOf("configuration", "mConfiguration"), listOf("getConfiguration"))
     private val windowConfigurationMember = member(listOf("windowConfiguration", "mWindowConfiguration"), listOf("getWindowConfiguration"))
     private val boundsMember = member(emptyList(), listOf("getBounds"))
+    private val activityTypeMember = member(listOf("mActivityType"), listOf("getActivityType"))
     private val windowingModeMember = member(listOf("windowingMode", "mWindowingMode"), listOf("getWindowingMode"))
     private val resizeModeMember = member(listOf("resizeMode", "mResizeMode"), listOf("getResizeMode"))
     private val densityMember = member(listOf("densityDpi"), listOf("getDensityDpi"))
@@ -56,6 +57,14 @@ object TaskInfoCompat {
         val vendorWindowed = scenario == 1 || scenario == 2
         return WindowState(displayId, bounds, windowingMode, resizeMode, densityDpi, token, vendorWindowed)
     }
+
+    /** WindowConfiguration.ACTIVITY_TYPE_HOME: the desktop, whatever its package. */
+    fun isHome(info: ActivityManager.RunningTaskInfo): Boolean {
+        val window = configurationMember.read(info)?.let(windowConfigurationMember::read) ?: return false
+        return (activityTypeMember.read(window) as? Number)?.toInt() == ACTIVITY_TYPE_HOME
+    }
+
+    private const val ACTIVITY_TYPE_HOME = 2
 
     fun readUserId(info: ActivityManager.RunningTaskInfo): Int? = (userMember.read(info) as? Number)?.toInt()
 

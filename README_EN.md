@@ -12,12 +12,13 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/ColorOS-16%20%7C%2017-1F5CDE?style=flat" alt="ColorOS 16 | 17">
+  <img src="https://img.shields.io/badge/HyperOS-4-FF6900?style=flat" alt="HyperOS 4">
   <img src="https://img.shields.io/github/v/release/yishisanren/NeXtep?display_name=tag&sort=semver" alt="Latest release">
   <img src="https://img.shields.io/badge/LSPosed-Required-C62828?style=flat" alt="LSPosed required">
   <img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat" alt="Apache-2.0">
 </p>
 
-Panes Workbench is an LSPosed module that adds a side workspace to the stock ColorOS 16 and 17 launcher: one main window to work in, four live panes waiting beside it, and the things you use most within reach. It does not replace the launcher or restyle the system; leave the workspace and the phone is as it was.
+Panes Workbench is an LSPosed module that adds a side workspace to the stock launcher of ColorOS 16 and 17 and Xiaomi HyperOS 4: one main window to work in, four live panes waiting beside it, and the things you use most within reach. It does not replace the launcher or restyle the system; leave the workspace and the phone is as it was.
 
 <p align="center">
   <img src="assets/readme/overview.gif" alt="A diagonal swipe from a bottom corner opens the workspace, another one closes it" width="300">
@@ -97,7 +98,9 @@ The workspace follows the system's light and dark mode, or stays light or dark. 
 
 ## Requirements
 
-- ColorOS 16 and 17. Tested on OPPO, OnePlus and realme phones; other ROMs need their own adaptation and are untested.
+- ColorOS 16 and 17: tested on OPPO, OnePlus and realme phones.
+- Xiaomi HyperOS 4: fully supported, tested on Xiaomi phones.
+- Other ROMs need their own adaptation and are untested.
 - Root (KernelSU or similar), Zygisk and LSPosed with the modern libxposed API.
 - The module changes SystemUI, launcher and system_server behaviour. Keep a recovery path for the device.
 
@@ -105,9 +108,10 @@ The workspace follows the system's light and dark mode, or stays light or dark. 
 
 1. Download the APK from [Releases](https://github.com/yishisanren/NeXtep/releases) and install it (package `io.github.yishisanren.panes`).
 2. Enable "格窗工作台 (Panes Workbench)" in LSPosed and tick every entry of the built-in [scope list](app/src/main/resources/META-INF/xposed/scope.list) that exists on your device: SystemUI, the framework, the launcher, the app-cloning service and the assistant screen.
-3. If NeXtep (`io.github.lujinxin.nextep`) is installed, disable and uninstall it first; two modules must not hook SystemUI at once.
-4. Reboot.
-5. Open Panes, pick favourite apps and add the Quick Settings tile.
+3. On Xiaomi HyperOS, tick SystemUI, the framework and the system launcher, and also install and enable the companion module `NeXtepHomeShim` from Releases.
+4. If NeXtep (`io.github.lujinxin.nextep`) is installed, disable and uninstall it first; two modules must not hook SystemUI at once.
+5. Reboot.
+6. Open Panes, pick favourite apps and add the Quick Settings tile.
 
 ## Open and close
 
