@@ -418,6 +418,10 @@ class SlotTaskCoordinator(
     private val pauseChecks = slots.indices.map { index -> Runnable { evaluatePause(index) } }
     /** The last reason each pane stayed live, so a lasting reason is logged once. */
     private val pauseBlockers = arrayOfNulls<String>(slots.size)
+    /** Slots currently scrolled fully out of the rail's window, and which of them were paused
+     * for it (only those resume when scrolled back; a normally paused pane stays paused). */
+    private val scrolledAway = BooleanArray(slots.size)
+    private val pausedOffscreen = BooleanArray(slots.size)
 
     private fun schedulePauseCheck(index: Int, delayMs: Long = PAUSE_IDLE_MS) {
         if (pauseRules == null) return
@@ -442,7 +446,10 @@ class SlotTaskCoordinator(
             return
         }
         val packageName = occupied.component.packageName
-        val blocker = rules.blocker(index, packageName)
+        // A pane scrolled out of the window pauses regardless of the chosen-apps list;
+        // media, a call or the wide pane still keep it live (see SlotPauseRules).
+        val blocker = if (scrolledAway[index]) rules.offscreenBlocker(index, packageName)
+            else rules.blocker(index, packageName)
         if (blocker != pauseBlockers[index]) {
             pauseBlockers[index] = blocker
             if (blocker != null && blocker != SlotPauseRules.NOT_CHOSEN) {
@@ -450,7 +457,9 @@ class SlotTaskCoordinator(
             }
         }
         when (blocker) {
-            null -> if (!slot.pause(slot.view.captureCardPreview())) schedulePauseCheck(index)
+            null -> if (slot.pause(slot.view.captureCardPreview())) {
+                pausedOffscreen[index] = scrolledAway[index]
+            } else schedulePauseCheck(index)
             SlotPauseRules.NOT_CHOSEN -> Unit
             // Media, a call or the wide pane may end; look again.
             else -> schedulePauseCheck(index)
@@ -468,6 +477,23 @@ class SlotTaskCoordinator(
                 slots[index].resume("choice changed")
             }
             pauseBlockers[index] = null
+            schedulePauseCheck(index)
+        }
+    }
+
+    /**
+     * The rail column scrolled: a slot fully out of the window is paused like an idle pane
+     * (media, a call or the wide pane keep it live); a slot back in view resumes, but only
+     * if scrolling is what paused it.
+     */
+    fun setSlotOffscreen(index: Int, offscreen: Boolean) {
+        if (index !in slots.indices || scrolledAway[index] == offscreen) return
+        scrolledAway[index] = offscreen
+        if (offscreen) {
+            schedulePauseCheck(index, 0L)
+        } else if (pausedOffscreen[index]) {
+            pausedOffscreen[index] = false
+            slots[index].resume("scrolled back into view")
             schedulePauseCheck(index)
         }
     }
@@ -516,8 +542,8 @@ class SlotTaskCoordinator(
     }
 
     init {
-        require(slots.size == WORKSPACE_SLOT_COUNT) {
-            "P6 requires exactly $WORKSPACE_SLOT_COUNT slots"
+        require(slots.size in WORKSPACE_VISIBLE_SLOT_COUNT..MAX_WORKSPACE_SLOTS) {
+            "P6 requires $WORKSPACE_VISIBLE_SLOT_COUNT..$MAX_WORKSPACE_SLOTS slots, got ${slots.size}"
         }
         slots.forEach { slot ->
             slot.setListener(this)
@@ -572,6 +598,8 @@ class SlotTaskCoordinator(
         clearPromotedTaskRecovery()
         handler.removeCallbacksAndMessages(null)
         pauseBlockers.fill(null)
+        scrolledAway.fill(false)
+        pausedOffscreen.fill(false)
         slots.forEach { it.view.setBusy(false) }
         slotRecords.forEach { record ->
             record.pendingComponent = null
