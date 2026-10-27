@@ -190,20 +190,17 @@ class VirtualDisplaySlot(
         if (paused) return false
         val output = view.textureView
         val parent = output.surfaceControl?.takeIf { it.isValid } ?: return false
-        val geometry = activeGeometry ?: return false
-        if (output.width <= 0 || output.height <= 0) return false
         val leash = TaskSurfaceCompat.taskLeash(taskId)?.takeIf { it.isValid } ?: return false
         return runCatching {
             val copy = android.view.SurfaceControl::class.java
                 .getMethod("mirrorSurface", android.view.SurfaceControl::class.java)
                 .invoke(null, leash) as android.view.SurfaceControl
-            // The output shows the display scaled to the view; the mirror takes the same scale.
-            val scaleX = output.width / geometry.width.toFloat()
-            val scaleY = output.height / geometry.height.toFloat()
+            // The output layer already scales its display-sized buffer to the view, children included:
+            // the mirror sits in display coordinates. Its own scale shrank it twice, into a corner.
             android.view.SurfaceControl.Transaction().reparent(copy, parent).setLayer(copy, MIRROR_LAYER)
-                .setPosition(copy, 0f, 0f).setScale(copy, scaleX, scaleY).setVisibility(copy, true).apply()
+                .setPosition(copy, 0f, 0f).setVisibility(copy, true).apply()
             mirror = copy
-            NeXtepLog.info("slot_mirror", "Mirrored slot=$index taskId=$taskId scale=$scaleX,$scaleY")
+            NeXtepLog.info("slot_mirror", "Mirrored slot=$index taskId=$taskId")
             true
         }.onFailure { NeXtepLog.warn("slot_mirror", "Mirror failed slot=$index taskId=$taskId", it) }.getOrDefault(false)
     }
@@ -217,12 +214,17 @@ class VirtualDisplaySlot(
         }
     }
 
-    /** What the pane's output layer shows now, mirror included, for the log. */
+    /**
+     * What the user sees in the pane: the window's layers cut to the pane. The output layer's own
+     * capture ignores its scale and showed a mirror shrunk into the corner as filling the pane.
+     */
     fun captureShown(): String {
         val output = view.textureView
-        val layer = output.surfaceControl?.takeIf { it.isValid } ?: return "no layer"
         return runCatching {
-            TaskSurfaceCompat.captureLayers(layer, android.graphics.Rect(0, 0, output.width, output.height), 0.25f)
+            val root = output.rootSurfaceControl ?: return "no window"
+            val window = root.javaClass.getMethod("getSurfaceControl").invoke(root) as android.view.SurfaceControl
+            val at = IntArray(2).also(output::getLocationInSurface)
+            TaskSurfaceCompat.captureLayers(window, android.graphics.Rect(at[0], at[1], at[0] + output.width, at[1] + output.height), 0.25f)
                 ?.let(SlotDiagnostics::summarize) ?: "none"
         }.getOrElse { "capture failed $it" }
     }

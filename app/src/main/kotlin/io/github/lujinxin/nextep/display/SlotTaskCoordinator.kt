@@ -467,7 +467,7 @@ class SlotTaskCoordinator(
         }
         handler.postDelayed({
             if (slots[index].mirrorsTask(taskId)) {
-                NeXtepLog.info("slot_mirror", "Shows slot=$index taskId=$taskId ${slots[index].captureShown()}")
+                NeXtepLog.info("slot_mirror", "Shows slot=$index taskId=$taskId pane=${slots[index].captureShown()} app=${SlotDiagnostics.taskLayer(taskId)}")
             }
         }, MIRROR_VERIFY_DELAY_MS)
     }

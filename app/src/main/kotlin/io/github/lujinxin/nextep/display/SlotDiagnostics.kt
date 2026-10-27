@@ -36,7 +36,7 @@ internal object SlotDiagnostics {
                 val info = tasks.firstOrNull { it.taskId == taskId }
                 append(" expected=").append(taskId)
                 append(" at=").append(info?.let { field(it, "displayId") } ?: "gone")
-                append(" layer=").append(layer(taskId))
+                append(" layer=").append(taskLayer(taskId))
             }
         }
     }
@@ -51,7 +51,7 @@ internal object SlotDiagnostics {
             " win=${view.windowVisibility} surface=${view.holder.surface?.isValid} layer=${view.surfaceControl?.isValid}"
 
     /** The task's own layers, captured apart from the pane: content here and none in the output is a display problem. */
-    private fun layer(taskId: Int): String {
+    fun taskLayer(taskId: Int): String {
         return TaskSurfaceCompat.capturePreview(taskId, scale = 0.05f)?.let(::summarize) ?: "none"
     }
 

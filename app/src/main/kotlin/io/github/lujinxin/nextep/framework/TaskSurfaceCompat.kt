@@ -678,7 +678,8 @@ object TaskSurfaceCompat {
         val access = organizerAccess()
         val appearedInfo = synchronized(access.lock) {
             invokeRequired(access.tasks, "get", taskId)
-        } ?: return@runCatching null // Shell has not reported the task yet: a normal transient state.
+        } ?: nestedHomeRoot(access, taskId)
+            ?: return@runCatching null // Shell has not reported the task yet: a normal transient state.
         // Shell's TaskAppearedInfo is delivered asynchronously. After a display move its
         // cached TaskInfo can still describe the slot, causing a successful promotion to
         // roll back. The same cache can also outlive a move into an OEM floating window.
@@ -698,6 +699,27 @@ object TaskSurfaceCompat {
     }.onFailure { error ->
         NeXtepLog.warn("task_surface", "Task leash lookup failed taskId=$taskId", error)
     }.getOrNull()
+
+    /**
+     * HyperOS nests the desktop: root task 1 holds home task 2, and Shell organizes only the root,
+     * so a lookup by the home task's own id never finds a leash. The root's leash moves the desktop.
+     */
+    @Suppress("DEPRECATION")
+    private fun nestedHomeRoot(access: OrganizerAccess, taskId: Int): Any? {
+        val leaf = activityManager?.getRunningTasks(MAX_TASK_QUERY)?.firstOrNull { it.taskId == taskId } ?: return null
+        if (!TaskInfoCompat.isHome(leaf)) return null
+        val displayId = TaskInfoCompat.readWindowState(leaf)?.displayId ?: return null
+        val organized = synchronized(access.lock) {
+            (0 until invokeRequired(access.tasks, "size") as Int).mapNotNull { invokeRequired(access.tasks, "valueAt", it) }
+        }
+        val root = organized.firstOrNull { appeared ->
+            val info = invokeRequired(appeared, "getTaskInfo") as? ActivityManager.RunningTaskInfo
+            info != null && TaskInfoCompat.isHome(info) && TaskInfoCompat.readWindowState(info)?.displayId == displayId
+        } ?: return null
+        NeXtepLog.info("task_surface", "Home taskId=$taskId is nested; its root " +
+            "taskId=${(invokeRequired(root, "getTaskInfo") as ActivityManager.RunningTaskInfo).taskId} carries the leash")
+        return root
+    }
 
     @Suppress("DEPRECATION")
     private fun findLiveTaskState(taskId: Int): TaskInfoCompat.WindowState? {

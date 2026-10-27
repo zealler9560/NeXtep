@@ -26,7 +26,8 @@ object NeXtepLog {
         synchronized(events) {
             if (events.size == MAX_EVENTS) events.removeFirst()
             events.addLast("${android.os.SystemClock.uptimeMillis()} priority=$priority feature=$feature " +
-                "error=${error?.javaClass?.simpleName ?: "none"} message=${masked(message)}")
+                "error=${error?.javaClass?.simpleName ?: "none"} message=${masked(message)}" +
+                (error?.let { " cause=${masked((it.message ?: it.cause?.toString()).toString())}" } ?: ""))
         }
         val enriched = "pid=${android.os.Process.myPid()} thread=${Thread.currentThread().name} " +
             "feature=$feature sdk=${Build.VERSION.SDK_INT} message=$message"
