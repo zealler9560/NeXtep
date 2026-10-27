@@ -161,6 +161,30 @@ object ColorOsLauncherHook {
                 })
                 NeXtepLog.info("launcher_workspace_close_animation", "Installed light return on ${method.declaringClass.simpleName}.${method.name}")
             }
+            HookGuard.run("launcher_close_async_diag") {
+                // Diagnostic: while ColorOS marks the close animation as running, taps may go to its
+                // interrupt path instead of the launcher window. Record when the flag changes and who asks.
+                val manager = classLoader.loadClass("com.android.launcher3.QuickstepTransitionManager")
+                manager.declaredMethods.filter {
+                    it.name == "setIsAppCloseAsyncAniRunning" || it.name == "isAppCloseAsyncAnimRunning"
+                }.forEach { method ->
+                    method.isAccessible = true
+                    module.hook(method).intercept(object : XposedInterface.Hooker {
+                        override fun intercept(chain: XposedInterface.Chain): Any? {
+                            val result = chain.proceed()
+                            if (LauncherTransformController.isActive()) {
+                                if (method.name.startsWith("set")) {
+                                    NeXtepLog.info("launcher_close_async", "set running=${chain.args.firstOrNull()}")
+                                } else if (result == true) {
+                                    val caller = Throwable().stackTrace.drop(1).firstOrNull { !it.className.startsWith("io.github") && !it.className.startsWith("java.lang.reflect") && !it.className.contains("lsposed", true) && !it.className.contains("xposed", true) }
+                                    NeXtepLog.info("launcher_close_async", "queried running=true by ${caller?.className}.${caller?.methodName}")
+                                }
+                            }
+                            return result
+                        }
+                    })
+                }
+            }
         }
         HookGuard.run("launcher_hooks") {
             val onPostResume = Activity::class.java.getDeclaredMethod("onPostResume")
