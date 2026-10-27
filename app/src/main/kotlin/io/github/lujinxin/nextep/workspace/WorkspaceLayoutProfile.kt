@@ -1,7 +1,8 @@
 package io.github.lujinxin.nextep.workspace
 
+import io.github.lujinxin.nextep.display.MAX_WORKSPACE_SLOTS
 import io.github.lujinxin.nextep.display.SlotGeometry
-import io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT
+import io.github.lujinxin.nextep.display.WORKSPACE_VISIBLE_SLOT_COUNT
 
 /** One recorded layout shared by panels, main-task fitting and all preview displays. */
 data class WorkspaceLayoutProfile(
@@ -13,6 +14,9 @@ data class WorkspaceLayoutProfile(
     val wideAspect: Double = DEFAULT_WIDE_ASPECT,
     /** The measured status bar height less the kept gap; not recorded, a record is checked against it on reading. */
     val statusBar: Int = 0,
+    /** How many slots the roster holds; only [WORKSPACE_VISIBLE_SLOT_COUNT] are on screen at once,
+     * the rest continue below the rail's window and are reached by scrolling the column. */
+    val slotCount: Int = WORKSPACE_VISIBLE_SLOT_COUNT,
 ) {
     /** The whole status bar: the inset a pane's display provides so apps lay out as on the phone's. */
     val statusBarHeight: Int get() = if (statusBar == 0) 0 else
@@ -28,7 +32,8 @@ data class WorkspaceLayoutProfile(
     init {
         require(densityDpi > 0 && gapPixels > 0)
         require(geometry.sidebarWidth > gapPixels)
-        require(wideSlotIndex == null || wideSlotIndex in 0 until WORKSPACE_SLOT_COUNT)
+        require(slotCount in WORKSPACE_VISIBLE_SLOT_COUNT..MAX_WORKSPACE_SLOTS)
+        require(wideSlotIndex == null || wideSlotIndex in 0 until slotCount)
         require(wideAspect in MIN_WIDE_ASPECT..MAX_WIDE_ASPECT)
     }
 
@@ -53,12 +58,19 @@ data class WorkspaceLayoutProfile(
     // Under a wide picture in portrait the rail cards take the main app's canvas (see canvas): the
     // shared solve fills the rail edge to edge, and a capped canvas leaves a little slack instead;
     // in landscape they fill the rail at their own aspect.
-    val slots: List<Slot> = if (wideSlotIndex == null) slotBounds(WORKSPACE_SLOT_COUNT) else {
-        val rail = slotBounds(WORKSPACE_SLOT_COUNT - 1, fit = geometry.mainCanvasHeight > 0).iterator()
-        List(WORKSPACE_SLOT_COUNT) { index ->
+    val slots: List<Slot> = if (wideSlotIndex == null) rosterSlotBounds(slotCount, WORKSPACE_VISIBLE_SLOT_COUNT) else {
+        val rail = rosterSlotBounds(slotCount - 1, WORKSPACE_VISIBLE_SLOT_COUNT - 1,
+            fit = geometry.mainCanvasHeight > 0).iterator()
+        List(slotCount) { index ->
             if (index == wideSlotIndex) Slot(minOf(geometry.availableWidth, geometry.availableHeight),
                 wideHeight(), 0) else rail.next()
         }
+    }
+
+    /** How far the rail column can scroll: the roster's lowest card bottom past the rail's window. */
+    val maxScrollOffset: Int get() {
+        val rail = if (wideSlotIndex == null) slots else slots.filterIndexed { index, _ -> index != wideSlotIndex }
+        return ((rail.maxOfOrNull { it.top + it.height } ?: 0) - geometry.sidebarLogicalHeight).coerceAtLeast(0)
     }
 
     // Under a wide picture the status bar/camera strip stays inside the control strip, free; the video
@@ -86,13 +98,14 @@ data class WorkspaceLayoutProfile(
         if (bottom == geometry.controlAtBottom) return this
         return create(geometry.screenWidth, geometry.screenHeight, densityDpi, geometry.navigationInsets,
             geometry.displayRotation, bottom, statusBar).withWideSlot(wideSlotIndex, wideAspect)
+            .copy(slotCount = slotCount)
     }
 
     fun withWideSlot(index: Int?, aspect: Double = DEFAULT_WIDE_ASPECT): WorkspaceLayoutProfile {
         if (index == null && wideSlotIndex == null) return this
         val normal = create(geometry.screenWidth, geometry.screenHeight, densityDpi,
             geometry.navigationInsets, geometry.displayRotation, geometry.controlAtBottom, statusBar)
-        if (index == null) return normal
+        if (index == null) return normal.copy(slotCount = slotCount)
         // A picture at the top keeps the status strip inside the control strip (wideStatus), and the
         // main app lays out at its own canvas there: nothing is cropped.
         val base = if (geometry.controlAtBottom) normal else create(geometry.screenWidth, geometry.screenHeight,
@@ -109,15 +122,37 @@ data class WorkspaceLayoutProfile(
             // Landscape keeps the proportional rail; the shared-aspect solve is a portrait layout.
             val rail = WorkspaceGeometry.proportionalRail(short, long, top).coerceAtLeast(gapPixels + 1)
             return base.copy(geometry = g.copy(topHeight = top, sidebarWidth = rail), wideSlotIndex = index, wideAspect = clamped)
+                .copy(slotCount = slotCount)
         }
         val remaining = long - top
-        val cards = WORKSPACE_SLOT_COUNT - 1
+        // The shared-aspect solve fits the main window beside the VISIBLE rail cards; a longer
+        // roster scrolls through the same rail and does not re-solve it.
+        val cards = WORKSPACE_VISIBLE_SLOT_COUNT - 1
         val shared = cards * (short - gapPixels).toDouble() / ((cards + 1.0) * remaining - (cards - 1) * slotGapPixels)
         val main = (remaining * shared).toInt().coerceIn(1, short - gapPixels - 1)
         val rail = (short - main).coerceAtLeast(gapPixels + 1)
         return base.copy(geometry = g.copy(topHeight = top, sidebarWidth = rail,
             mainCanvasHeight = wideMainCanvasHeight(g.copy(topHeight = top, sidebarWidth = rail))),
-            wideSlotIndex = index, wideAspect = clamped)
+            wideSlotIndex = index, wideAspect = clamped).copy(slotCount = slotCount)
+    }
+
+    /**
+     * Bounds for a roster of [total] slots whose first [visible] fill the rail exactly as
+     * [slotBounds] lays them out today; the rest continue below the rail's window at the same
+     * pitch and card size, to be scrolled into view. Card size never depends on [total].
+     */
+    private fun rosterSlotBounds(total: Int, visible: Int, fit: Boolean = true): List<Slot> {
+        val head = slotBounds(visible, fit)
+        if (total <= visible) return head.take(total)
+        // The last visible cell is always a full-height one (the remainder rows come first),
+        // so the column continues at its pitch with the last card's size and centering.
+        val base = (geometry.sidebarLogicalHeight - slotGapPixels * (visible - 1))
+            .coerceAtLeast(visible) / visible
+        val pitch = base + slotGapPixels
+        val last = head.last()
+        return head + (visible until total).map { index ->
+            Slot(last.width, last.height, last.top + (index - (visible - 1)) * pitch)
+        }
     }
 
     private fun slotBounds(count: Int, fit: Boolean = true): List<Slot> {
@@ -154,7 +189,7 @@ data class WorkspaceLayoutProfile(
             (height - source.height * scale) / 2f - source.top * scale)
     }
 
-    fun encode(): String = (listOf(if (wideSlotIndex == null) NORMAL_VERSION else WIDE_VERSION, geometry.screenWidth, geometry.screenHeight,
+    fun encode(): String = (listOf(if (wideSlotIndex == null) NORMAL_VERSION else WIDE_VERSION, slotCount, geometry.screenWidth, geometry.screenHeight,
         geometry.topHeight, geometry.sidebarWidth, densityDpi, gapPixels,
         geometry.navigationInsets.left, geometry.navigationInsets.top,
         geometry.navigationInsets.right, geometry.navigationInsets.bottom,
@@ -186,25 +221,30 @@ data class WorkspaceLayoutProfile(
         fun decode(encoded: String?, statusBar: Int = 0): WorkspaceLayoutProfile? = runCatching {
             val p = encoded?.split(',') ?: return@runCatching null
             val wide = p.firstOrNull() == WIDE_VERSION
-            if (!wide && p.firstOrNull() != NORMAL_VERSION ||
-                p.size != 21 + WORKSPACE_SLOT_COUNT * 3 + if (wide) 1 else 0) return@runCatching null
-            val portrait = p[2].toInt() > p[1].toInt()
-            val geometry = WorkspaceGeometry(p[1].toInt(), p[2].toInt(),
-                p[3].toInt(), p[4].toInt(), SidebarSide.RIGHT,
-                WorkspaceNavigationInsets(p[7].toInt(), p[8].toInt(), p[9].toInt(), p[10].toInt()),
-                displayRotation = p[20 + WORKSPACE_SLOT_COUNT * 3].toInt(),
+            if (!wide && p.firstOrNull() != NORMAL_VERSION) return@runCatching null
+            // The record carries its roster size; the field count follows from it.
+            val count = p.getOrNull(1)?.toIntOrNull() ?: return@runCatching null
+            if (count !in WORKSPACE_VISIBLE_SLOT_COUNT..MAX_WORKSPACE_SLOTS ||
+                p.size != 22 + count * 3 + if (wide) 1 else 0) return@runCatching null
+            val portrait = p[3].toInt() > p[2].toInt()
+            val geometry = WorkspaceGeometry(p[2].toInt(), p[3].toInt(),
+                p[4].toInt(), p[5].toInt(), SidebarSide.RIGHT,
+                WorkspaceNavigationInsets(p[8].toInt(), p[9].toInt(), p[10].toInt(), p[11].toInt()),
+                displayRotation = p[21 + count * 3].toInt(),
                 // The band a portrait record was solved below; a wide record keeps it in its strip.
                 statusInset = if (portrait && !wide) statusBar else 0)
             // The main canvas is not recorded: it follows from the rail, and the cards are solved on it.
             val profile = WorkspaceLayoutProfile(if (wide && portrait) geometry.copy(mainCanvasHeight = wideMainCanvasHeight(geometry)) else geometry,
-                p[5].toInt(), p[6].toInt(), if (wide) p.last().toInt() else null, statusBar = statusBar)
+                p[6].toInt(), p[7].toInt(), if (wide) p.last().toInt() else null, statusBar = statusBar,
+                slotCount = count)
             if (profile.encode() != encoded) return@runCatching null
             profile
         }.getOrNull()
 
-        // The version names the slot count: a record of another layout (any older one) is measured again.
-        private const val NORMAL_VERSION = "16"
-        private const val WIDE_VERSION = "17"
+        // The version names the record format: 18/19 carry the roster slot count after the
+        // version field. A record of another layout (any older one) is measured again.
+        private const val NORMAL_VERSION = "18"
+        private const val WIDE_VERSION = "19"
 
     }
 }
