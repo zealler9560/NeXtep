@@ -70,6 +70,24 @@ class VirtualDisplaySlot(
 
     fun setInteractive(value: Boolean) { view.setContentInput(if (value) input else null) }
 
+    /** One BACK key press delivered to this slot's own display, not the main one. */
+    fun sendBack(): Boolean {
+        val id = displayId()
+        if (!active || suspended || id == null || id <= 0) return false
+        return runCatching {
+            val now = android.os.SystemClock.uptimeMillis()
+            listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP).all { action ->
+                val key = android.view.KeyEvent(
+                    now, now, action, android.view.KeyEvent.KEYCODE_BACK, 0, 0,
+                    android.view.KeyCharacterMap.VIRTUAL_KEYBOARD, 0, android.view.KeyEvent.FLAG_FROM_SYSTEM,
+                    android.view.InputDevice.SOURCE_KEYBOARD,
+                )
+                inputDisplay.invoke(key, id)
+                injectInput.invoke(inputManager, key, 0) == true
+            }
+        }.onFailure { NeXtepLog.warn("wide_back", "Back key unavailable", it) }.getOrDefault(false)
+    }
+
     private var paused = false
     private var pausedAt = 0L
     /**

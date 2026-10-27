@@ -94,6 +94,9 @@ class NeXtepWindowController(
     private var wideGeneration = 0
     private var wideLayoutChanging = false
     private var wideReturnPending = false
+    private val wideEdgeBack = WideEdgeBackMonitor(context, ::wideBackRegion) {
+        wideSlotIndex?.let { slotWindows.getOrNull(it) }?.sendBack() ?: false
+    }
     /** The wide pane's last picture with content: a player drops its video before it asks for portrait. */
     private var wideSnapshot: android.graphics.Bitmap? = null
     private val wideSnapshotTick = object : Runnable {
@@ -1600,6 +1603,15 @@ class NeXtepWindowController(
         poll()
     }
 
+    /** The pinned video's rectangle on the physical screen; null unless a video is pinned and shown. */
+    private fun wideBackRegion(): WideEdgeBackGestureDetector.Region? {
+        if (!workspaceVisible || suspended) return null
+        val view = wideSlotIndex?.let { slotWindows.getOrNull(it) }?.view ?: return null
+        val rect = android.graphics.Rect()
+        if (!view.getScreenVisibleRect(rect) || rect.isEmpty) return null
+        return WideEdgeBackGestureDetector.Region(rect.left, rect.top, rect.right, rect.bottom)
+    }
+
     private fun setWideLayout(index: Int?, taskId: Int?) {
         if (wideSlotIndex == index && wideTaskId == taskId) return
         NeXtepLog.info("wide_layout", "Wide layout index=$index task=$taskId display=${index?.let { slotWindows.getOrNull(it)?.displayId() }}")
@@ -1610,6 +1622,7 @@ class NeXtepWindowController(
         // Each pin starts at 16:9; the sampler narrows the slot once the picture shows its bars.
         viewport.setWideSlot(index)
         if (index == null) wideAspectSampler.stop() else wideAspectSampler.start()
+        if (index == null) wideEdgeBack.stop() else wideEdgeBack.start()
         backdropHandler.removeCallbacks(wideSnapshotTick)
         wideSnapshot?.recycle()
         wideSnapshot = null
