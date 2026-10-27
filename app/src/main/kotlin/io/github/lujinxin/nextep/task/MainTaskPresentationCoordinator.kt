@@ -76,6 +76,9 @@ class MainTaskPresentationCoordinator(context: Context) {
         homePackage: String?,
     ): Result<Unit> {
         val home = task.component.packageName == homePackage
+        // The launcher animates its windows unscaled unless a module scales the desktop in its process.
+        TaskSurfaceCompat.desktopScaledHere = homePackage != null &&
+            homePackage !in TriggerBroadcastContract.OWN_LAUNCHER_PACKAGES && launcherAnswers != true
         if (home && launcherOwnsHome(homePackage)) {
             NeXtepLog.info("main_task_presenter", "Foreground task is HOME; Launcher owns transform")
             notifyHomePresented()
@@ -310,8 +313,6 @@ class MainTaskPresentationCoordinator(context: Context) {
         const val ENTRY_WAIT_MS = 1_500L
         /** Covers the launch polling; an icon tap older than this no longer explains a new task. */
         const val ENTRY_SOURCE_TTL_MS = 3_000L
-        /** Launchers this module hooks itself (ColorOS). */
-        val OWN_LAUNCHERS = setOf("com.android.launcher", "com.oplus.launcher")
         /** A companion that starts later (launcher restart, module enabled) is found on the next entry. */
         const val LAUNCHER_PROBE_MS = 30_000L
         /** How hyperos-shim (2.8+) opens its diagnostics answer. */
@@ -330,7 +331,7 @@ class MainTaskPresentationCoordinator(context: Context) {
      * any app. Until the first answer the launcher keeps it, so a working companion is not doubled.
      */
     internal fun launcherOwnsHome(homePackage: String?): Boolean {
-        if (homePackage == null || homePackage in OWN_LAUNCHERS) return true
+        if (homePackage == null || homePackage in TriggerBroadcastContract.OWN_LAUNCHER_PACKAGES) return true
         val now = SystemClock.uptimeMillis()
         if (probedHome != homePackage) {
             probedHome = homePackage

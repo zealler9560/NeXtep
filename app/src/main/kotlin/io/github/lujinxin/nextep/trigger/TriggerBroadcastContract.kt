@@ -65,6 +65,8 @@ object TriggerBroadcastContract {
     const val SYSTEM_UI_PACKAGE = "com.android.systemui"
     const val MODULE_PACKAGE = "io.github.yishisanren.panes"
     const val ASSISTANT_SCREEN_PACKAGE = "com.coloros.assistantscreen"
+    /** Launchers this module hooks itself (ColorOS); any other desktop answers only through a companion. */
+    val OWN_LAUNCHER_PACKAGES = setOf("com.android.launcher", "com.oplus.launcher")
 
     fun queryIntent(targetPackage: String): Intent =
         targetIntent(ACTION_QUERY_WORKSPACE, targetPackage)

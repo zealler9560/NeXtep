@@ -36,7 +36,7 @@ object TriggerCoordinator {
             return
         }
 
-        queryTarget(context, homePackage) homeQuery@ { homeState ->
+        queryHome(context, homePackage, absentActive = false) homeQuery@ { homeState ->
             if (homeState !is RequestResult.Ready) {
                 onResult(homeState)
                 return@homeQuery
@@ -65,7 +65,7 @@ object TriggerCoordinator {
                         onResult(systemUiSet)
                         return@systemUiSetResult
                     }
-                    setTarget(context, homePackage, requestedActive, source) { homeSet ->
+                    setHome(context, homePackage, requestedActive, source) { homeSet ->
                         if (homeSet is RequestResult.Ready) {
                             onResult(homeSet)
                         } else {
@@ -107,7 +107,7 @@ object TriggerCoordinator {
                 return@systemUiQuery
             }
             if (!systemUiState.active) {
-                setTarget(context, homePackage, false, TriggerSource.SYSTEM_RECOVERY) { homeSet ->
+                setHome(context, homePackage, false, TriggerSource.SYSTEM_RECOVERY) { homeSet ->
                     onResult(if (homeSet is RequestResult.Ready) homeSet.copy(
                         runtimeProtocolVersion = systemUiState.runtimeProtocolVersion,
                         slotStates = systemUiState.slotStates,
@@ -115,7 +115,7 @@ object TriggerCoordinator {
                 }
                 return@systemUiQuery
             }
-            queryTarget(context, homePackage) { homeState ->
+            queryHome(context, homePackage, absentActive = true) { homeState ->
                 if (homeState !is RequestResult.Ready) {
                     onResult(homeState)
                 } else {
@@ -194,7 +194,7 @@ object TriggerCoordinator {
                 onResult(systemUiSet)
                 return@systemUiSetResult
             }
-            setTarget(context, homePackage, active, source) { homeSet ->
+            setHome(context, homePackage, active, source) { homeSet ->
                 if (homeSet !is RequestResult.Ready) {
                     NeXtepLog.warn(
                         "trigger",
@@ -218,6 +218,22 @@ object TriggerCoordinator {
     } else {
         null
     }
+
+    /**
+     * A desktop this module does not hook itself (HyperOS) answers only through a companion module.
+     * With none answering there is no launcher to follow: SystemUI scales the desktop on its own and
+     * its state stands for both. ColorOS's own launchers must answer, or the desktop stays unscaled.
+     */
+    private fun followHome(homePackage: String, absentActive: Boolean, result: RequestResult): RequestResult =
+        if (result is RequestResult.NotReady && homePackage !in TriggerBroadcastContract.OWN_LAUNCHER_PACKAGES) {
+            RequestResult.Ready(absentActive, homePackage, TriggerBroadcastContract.RUNTIME_PROTOCOL_VERSION)
+        } else result
+
+    private fun queryHome(context: Context, homePackage: String, absentActive: Boolean, onResult: (RequestResult) -> Unit) =
+        queryTarget(context, homePackage) { onResult(followHome(homePackage, absentActive, it)) }
+
+    private fun setHome(context: Context, homePackage: String, active: Boolean, source: TriggerSource, onResult: (RequestResult) -> Unit) =
+        setTarget(context, homePackage, active, source) { onResult(followHome(homePackage, active, it)) }
 
     private fun queryTarget(
         context: Context,

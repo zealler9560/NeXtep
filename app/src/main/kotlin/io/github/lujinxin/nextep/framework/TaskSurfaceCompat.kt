@@ -81,6 +81,78 @@ object TaskSurfaceCompat {
     fun <R> interceptTransactionApply(transaction: Any, proceed: () -> R): R =
         transactionGuard.intercept(transaction, proceed)
 
+    /** SystemUI, not a module in the launcher's process, scales the desktop (HyperOS). */
+    @Volatile var desktopScaledHere = false
+
+    private class LiftedRoot(val root: SurfaceControl, val offsetX: Float, val offsetY: Float,
+        val tasks: List<SurfaceControl>, val since: Long)
+    private val liftedRoots = ConcurrentHashMap<Any, LiftedRoot>()
+
+    /**
+     * HyperOS plays its desktop's window animations through Shell's recents handler, the launcher
+     * moving each window in its own full-screen space. Our scale on the task's leash then sat under
+     * the launcher's transform: a closing window flew to where its icon would be unscaled, under the
+     * sidebar. For the transition's length the pane transform moves onto its root, above every leash
+     * the launcher moves, and the tasks in it draw unscaled. Returns whether it did.
+     */
+    fun liftIntoTransitionRoot(transition: Any, info: Any, start: SurfaceControl.Transaction): Boolean = runCatching {
+        if (!desktopScaledHere) return@runCatching false
+        val changes = (invokeRequired(info, "getChanges") as List<*>).filterNotNull().filter { change ->
+            (invokeRequired(change, "getEndDisplayId") as Int) == Display.DEFAULT_DISPLAY
+        }
+        val leashes = changes.mapNotNull { invokeRequired(it, "getLeash") as? SurfaceControl }
+        val type = invokeRequired(info, "getType")
+        val pane = activePresentations.values.firstOrNull { presentation ->
+            leashes.any { sameSurface(it, presentation.leash as SurfaceControl) }
+        } ?: run {
+            if (activePresentations.isNotEmpty()) NeXtepLog.info("task_surface", "Transition type=$type moves no task in the main pane " +
+                "tasks=${changes.map { (invokeRequired(it, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.taskId }}")
+            return@runCatching false
+        }
+        // A wallpaper under the root would shrink into the pane and bare the screen around it.
+        if (changes.any { (invokeRequired(it, "getFlags") as Int) and FLAG_IS_WALLPAPER != 0 }) {
+            NeXtepLog.info("task_surface", "Transition type=$type moves the wallpaper; its root stays unscaled")
+            return@runCatching false
+        }
+        val root = (0 until invokeRequired(info, "getRootCount") as Int).map { invokeRequired(info, "getRoot", it)!! }
+            .firstOrNull { invokeRequired(it, "getDisplayId") == Display.DEFAULT_DISPLAY } ?: return@runCatching false
+        val rootLeash = invokeRequired(root, "getLeash") as SurfaceControl
+        val offset = invokeRequired(root, "getOffset") as android.graphics.Point
+        val frame = rootFrame(SurfaceFrame(pane.scaleX, pane.scaleY, pane.positionX, pane.positionY), offset.x, offset.y)
+        liftedRoots[transition] = LiftedRoot(rootLeash, offset.x.toFloat(), offset.y.toFloat(), leashes, SystemClock.uptimeMillis())
+        start.setScale(rootLeash, frame.scaleX, frame.scaleY).setPosition(rootLeash, frame.positionX, frame.positionY)
+        NeXtepLog.info("task_surface", "Lifted transition type=$type into the main pane through its root " +
+            "tasks=${changes.map { (invokeRequired(it, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.taskId }}")
+        true
+    }.getOrElse { error ->
+        NeXtepLog.error("task_surface", "Transition root lift failed", error)
+        false
+    }
+
+    /** The transition ended, or its handler declined it: then [start] puts the root back before it shows. */
+    fun dropTransitionRoot(transition: Any, start: SurfaceControl.Transaction? = null) {
+        val lift = liftedRoots.remove(transition) ?: return
+        if (start != null && lift.root.isValid) start.setScale(lift.root, 1f, 1f).setPosition(lift.root, lift.offsetX, lift.offsetY)
+        NeXtepLog.info("task_surface", "Transition root released after ${SystemClock.uptimeMillis() - lift.since}ms" +
+            if (start != null) " unplayed" else "")
+    }
+
+    /** Whether [surface] draws under a lifted root; a root Shell has released ends its lift. */
+    private fun lifted(surface: SurfaceControl): Boolean = liftedRoots.entries.any { (transition, lift) ->
+        if (!lift.root.isValid) {
+            dropTransitionRoot(transition)
+            false
+        } else lift.tasks.any { sameSurface(it, surface) }
+    }
+
+    private val sameSurfaceMethod: Method? by lazy {
+        runCatching { SurfaceControl::class.java.getMethod("isSameSurface", SurfaceControl::class.java) }.getOrNull()
+    }
+
+    /** Shell's leash and a transition's are separate objects for one layer. */
+    private fun sameSurface(a: SurfaceControl, b: SurfaceControl): Boolean =
+        a === b || runCatching { sameSurfaceMethod?.invoke(a, b) == true }.getOrDefault(false)
+
     fun initialize(classLoader: ClassLoader) {
         hostClassLoader = classLoader
         NeXtepLog.info("task_surface", "Host class loader captured: $classLoader")
@@ -613,9 +685,10 @@ object TaskSurfaceCompat {
         return observedLeashes[taskId]
     }
 
-    private fun writeFrame(transaction: Any, leash: Any, frame: SurfaceFrame) {
+    private fun writeFrame(transaction: Any, leash: Any, target: SurfaceFrame) {
         val nativeTransaction = transaction as SurfaceControl.Transaction
         val surface = leash as SurfaceControl
+        val frame = if (liftedRoots.isNotEmpty() && lifted(surface)) target.copy(scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f) else target
         // Keep native visibility, fade, layer order and parenting intact.
         nativeTransaction.setCrop(surface, frame.crop)
             .setScale(surface, frame.scaleX, frame.scaleY)
@@ -851,7 +924,14 @@ object TaskSurfaceCompat {
     private const val ENTRY_EXPECTATION_MS = 3_000L
     private const val REPOSITION_DURATION_MS = 260L
     private const val RESTORE_DURATION_MS = 180L
+    /** TransitionInfo.FLAG_IS_WALLPAPER (hidden). */
+    private const val FLAG_IS_WALLPAPER = 1 shl 1
 }
+
+/** The root's own transform: its children sit in display space from [offsetX],[offsetY]; the pane takes them. */
+internal fun rootFrame(pane: TaskSurfaceCompat.SurfaceFrame, offsetX: Int, offsetY: Int) = TaskSurfaceCompat.SurfaceFrame(
+    pane.scaleX, pane.scaleY, pane.positionX + pane.scaleX * offsetX, pane.positionY + pane.scaleY * offsetY,
+)
 
 /**
  * An app still relaying out after a size change shows bare edges (no buffer there yet) or a blank
