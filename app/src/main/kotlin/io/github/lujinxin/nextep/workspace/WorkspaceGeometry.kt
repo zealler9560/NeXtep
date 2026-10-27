@@ -171,7 +171,9 @@ data class WorkspaceGeometry(
             val shortSide = if (landscape) availableHeight else availableWidth
             val gap = (WorkspaceControlMetrics.RAIL_GAP_DP * density).toInt().coerceAtLeast(1)
             val slotGap = (WorkspaceControlMetrics.SLOT_GAP_DP * density).toInt().coerceAtLeast(1)
-            val count = io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT
+            // The solve sizes the main window and the VISIBLE cards; a longer roster scrolls
+            // through the same rail and must not shrink them.
+            val count = io.github.lujinxin.nextep.display.WORKSPACE_VISIBLE_SLOT_COUNT
             // Solve main and all preview rectangles together, including gaps.
             // Their canvases share the recorded phone aspect ratio.
             val solved = ((longSide + count * gap * longSide.toDouble() / shortSide -
