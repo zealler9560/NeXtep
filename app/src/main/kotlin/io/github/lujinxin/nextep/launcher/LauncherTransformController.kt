@@ -133,7 +133,18 @@ object LauncherTransformController {
             lastTouchAt = event.eventTime
         }
         val transform = if (active) appliedTransform else null
+        if (event != null && active && event.actionMasked == MotionEvent.ACTION_DOWN) logTouch(event, transform)
         return transform?.takeIf { TouchCoordinateMapper.toContent(event, it) }
+    }
+
+    /** A tap that opens the wrong icon is a mapping that differs from what is drawn; record both. */
+    private fun logTouch(event: MotionEvent, transform: TouchCoordinateMapper.Transform?) {
+        val decor = decorReference.get()
+        val drawn = decor?.let { "${it.scaleX},${it.translationX},${it.translationY} pivot=${it.pivotX},${it.pivotY} m=${it.animationMatrix != null}" }
+        val mapped = transform?.let { "${(event.rawX - it.translationX) / it.scaleX},${(event.rawY - it.translationY) / it.scaleY}" }
+        NeXtepLog.info("launcher_touch", "down raw=${event.rawX},${event.rawY} local=${event.x},${event.y} mapped=$mapped " +
+            "applied=${transform?.let { "${it.scaleX},${it.translationX},${it.translationY}" }} drawn=$drawn " +
+            "animating=${decor?.let { positionAnimators[it]?.isRunning }}")
     }
 
     private var lastTouchX = 0f
