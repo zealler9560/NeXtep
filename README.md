@@ -12,13 +12,13 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/ColorOS-16%20%7C%2017-1F5CDE?style=flat" alt="ColorOS 16 | 17">
-  <img src="https://img.shields.io/badge/HyperOS-4-FF6900?style=flat" alt="HyperOS 4">
+  <img src="https://img.shields.io/badge/HyperOS-supported-FF6900?style=flat" alt="澎湃 OS">
   <img src="https://img.shields.io/github/v/release/yishisanren/NeXtep?display_name=tag&sort=semver" alt="最新版本">
   <img src="https://img.shields.io/badge/LSPosed-Required-C62828?style=flat" alt="需要 LSPosed">
   <img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat" alt="Apache-2.0">
 </p>
 
-格窗工作台是一个 LSPosed 模块，给 ColorOS 16、17 和小米澎湃 OS（HyperOS）4 的原生桌面加一个侧边工作台：一个大窗做事，四个小窗候着，常用的都放在手边。不替换桌面，不改系统主题，退出后手机回到原样。
+格窗工作台是一个 LSPosed 模块，给 ColorOS 16、17 和小米澎湃 OS（HyperOS）的原生桌面加一个侧边工作台：一个大窗做事，四个小窗候着，常用的都放在手边。不替换桌面，不改系统主题，退出后手机回到原样。
 
 <p align="center">
   <img src="assets/readme/overview.gif" alt="底角斜滑打开工作台，再斜滑一次关闭" width="300">
@@ -99,7 +99,7 @@
 ## 使用要求
 
 - ColorOS 16 和 17：在 OPPO、一加、realme 的机型上测试过。
-- 小米澎湃 OS（HyperOS）4：全面适配，在小米机型上测试过。
+- 小米澎湃 OS（HyperOS）：全面适配，在小米机型上测试过。
 - 其他 ROM 需要自行适配，未经测试不保证兼容。
 - Root（KernelSU 等）、Zygisk 与 LSPosed（支持 libxposed 新 API）。
 - 本模块会修改 SystemUI、桌面和 system_server 的行为，请确保设备有可用的恢复手段。
