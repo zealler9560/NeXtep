@@ -128,12 +128,21 @@ object ColorOsLauncherHook {
             HookGuard.run("launcher_workspace_close_animation") {
                 // ColorOS already provides an icon-free animated return for special surfaces.
                 // Its icon spring assumes an unscaled Launcher and is invalid in our workspace.
-                val manager = classLoader.loadClass(
-                    "com.android.launcher3.OplusQuickstepTransitionManagerImpl",
-                )
-                val method = manager.declaredMethods.single {
-                    it.name == "liteAppCloseAnim" && it.returnType == Boolean::class.javaPrimitiveType &&
-                        it.parameterTypes.size == 1 && it.parameterTypes[0].isArray
+                // ColorOS 15/16 decide in OplusQuickstepTransitionManagerImpl.liteAppCloseAnim(targets);
+                // ColorOS 17 moved the decision to QuickstepTransitionManager.shouldUseLightCloseAnimation
+                // (view, targets). Without either, BACK took the icon spring while HOME took the light return.
+                val method = runCatching {
+                    classLoader.loadClass("com.android.launcher3.OplusQuickstepTransitionManagerImpl")
+                        .declaredMethods.single {
+                            it.name == "liteAppCloseAnim" && it.returnType == Boolean::class.javaPrimitiveType &&
+                                it.parameterTypes.size == 1 && it.parameterTypes[0].isArray
+                        }
+                }.getOrElse {
+                    classLoader.loadClass("com.android.launcher3.QuickstepTransitionManager")
+                        .declaredMethods.single {
+                            it.name == "shouldUseLightCloseAnimation" && it.returnType == Boolean::class.javaPrimitiveType &&
+                                it.parameterTypes.size == 2 && it.parameterTypes[1].isArray
+                        }
                 }
                 method.isAccessible = true
                 module.hook(method).intercept(object : XposedInterface.Hooker {
@@ -143,6 +152,7 @@ object ColorOsLauncherHook {
                         return true
                     }
                 })
+                NeXtepLog.info("launcher_workspace_close_animation", "Installed light return on ${method.declaringClass.simpleName}.${method.name}")
             }
         }
         HookGuard.run("launcher_hooks") {
