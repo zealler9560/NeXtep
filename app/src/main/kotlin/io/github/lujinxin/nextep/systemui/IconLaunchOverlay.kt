@@ -4,14 +4,11 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
-import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
@@ -202,31 +199,5 @@ class IconLaunchOverlay(private val context: Context, private val windowType: ()
         private const val ICON_CORNER = 0.22f
         private const val PANE_CORNER_DP = 14f
         private const val ICON_END_FRACTION = 0.6f
-
-        /**
-         * An adaptive icon's background layer, the colour the launcher grows out of; otherwise the
-         * icon as a whole. The most common colour of a 16x16 rendering, so a white icon with a dark
-         * mark stays white rather than turning grey.
-         */
-        fun plateColor(icon: Drawable): Int = runCatching {
-            val layer = (icon as? AdaptiveIconDrawable)?.background ?: icon
-            val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
-            layer.setBounds(0, 0, 16, 16)
-            layer.draw(Canvas(bitmap))
-            val counts = HashMap<Int, Int>()
-            val sums = HashMap<Int, IntArray>()
-            for (y in 0 until 16) for (x in 0 until 16) {
-                val c = bitmap.getPixel(x, y)
-                if (Color.alpha(c) < 128) continue
-                val key = (Color.red(c) shr 4 shl 8) or (Color.green(c) shr 4 shl 4) or (Color.blue(c) shr 4)
-                counts[key] = (counts[key] ?: 0) + 1
-                sums.getOrPut(key) { IntArray(3) }.let { it[0] += Color.red(c); it[1] += Color.green(c); it[2] += Color.blue(c) }
-            }
-            bitmap.recycle()
-            val key = counts.maxByOrNull { it.value }?.key ?: return Color.WHITE
-            val n = counts.getValue(key)
-            val s = sums.getValue(key)
-            Color.rgb(s[0] / n, s[1] / n, s[2] / n)
-        }.getOrDefault(Color.WHITE)
     }
 }

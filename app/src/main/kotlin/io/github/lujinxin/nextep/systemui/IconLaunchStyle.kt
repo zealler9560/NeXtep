@@ -1,9 +1,6 @@
 package io.github.lujinxin.nextep.systemui
 
-import android.content.ComponentName
-import android.content.Context
 import android.graphics.Path
-import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.animation.Interpolator
 import android.view.animation.PathInterpolator
@@ -28,8 +25,6 @@ class IconLaunchStyle(
     val iconFadeStart: Float,
     val iconFadeEnd: Float,
     val iconGrows: Boolean,
-    /** The plate takes the app's splash background, as the system's own starting window does. */
-    val plateFromSplash: Boolean,
 ) {
     val totalMs: Long get() = liftMs + growMs
 
@@ -37,7 +32,7 @@ class IconLaunchStyle(
         val GENERIC = IconLaunchStyle(
             liftMs = 0L, liftScale = 1f, popFraction = 0f, popBias = 0f,
             growMs = 400L, growCurve = PathInterpolator(0.2f, 0f, 0f, 1f),
-            iconFadeStart = 0.6f, iconFadeEnd = 0.95f, iconGrows = true, plateFromSplash = false,
+            iconFadeStart = 0.6f, iconFadeEnd = 0.95f, iconGrows = true,
         )
 
         /**
@@ -53,7 +48,7 @@ class IconLaunchStyle(
                 0.573f to 0.934f, 0.625f to 0.944f, 0.677f to 0.964f, 0.729f to 0.975f, 0.833f to 0.985f,
                 0.938f to 0.995f,
             ),
-            iconFadeStart = 0f, iconFadeEnd = 0.25f, iconGrows = false, plateFromSplash = true,
+            iconFadeStart = 0f, iconFadeEnd = 0.25f, iconGrows = false,
         )
 
         fun forDevice(manufacturer: String = Build.MANUFACTURER): IconLaunchStyle =
@@ -65,25 +60,5 @@ class IconLaunchStyle(
             points.forEach { (t, p) -> lineTo(t, p) }
             lineTo(1f, 1f)
         })
-
-        /**
-         * The colour the app's own starting window would show: its splash background, else its window
-         * background when that is a plain colour. Null when the app declares neither.
-         */
-        fun splashColor(context: Context, component: ComponentName): Int? = runCatching {
-            val info = context.packageManager.getActivityInfo(component, 0)
-            val themeRes = info.themeResource.takeIf { it != 0 } ?: info.applicationInfo.theme
-            if (themeRes == 0) return null
-            val appContext = context.createPackageContext(component.packageName, Context.CONTEXT_IGNORE_SECURITY)
-            val theme = appContext.resources.newTheme().apply { applyStyle(themeRes, true) }
-            val attributes = theme.obtainStyledAttributes(intArrayOf(android.R.attr.windowSplashScreenBackground, android.R.attr.windowBackground))
-            try {
-                val splash = attributes.getColor(0, 0)
-                if (splash != 0) return splash
-                (attributes.getDrawable(1) as? ColorDrawable)?.color
-            } finally {
-                attributes.recycle()
-            }
-        }.getOrNull()
     }
 }

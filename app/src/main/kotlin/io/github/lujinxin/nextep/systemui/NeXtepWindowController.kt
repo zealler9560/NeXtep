@@ -939,8 +939,9 @@ class NeXtepWindowController(
 
     /**
      * The tapped icon flies from [source] to the main pane, covering the task's black first frames.
-     * The desktop's own rendering of the icon is used when it came along; the plate takes the app's
-     * splash colour where the ROM's launcher does, else the icon's.
+     * The desktop's own rendering of the icon is used when it came along. The plate is a neutral
+     * surface in the system's light or dark tone: an icon- or splash-coloured block over the whole
+     * pane looked like a paint swatch, not a window opening.
      */
     private fun flyIcon(component: android.content.ComponentName, source: android.graphics.Rect, desktopIcon: android.graphics.Bitmap?) {
         if (source.isEmpty) return
@@ -948,8 +949,9 @@ class NeXtepWindowController(
             ?: runCatching { context.packageManager.getActivityIcon(component) }
                 .recoverCatching { context.packageManager.getApplicationIcon(component.packageName) }
                 .getOrNull() ?: return
-        val plate = (if (iconLaunchStyle.plateFromSplash) IconLaunchStyle.splashColor(context, component) else null)
-            ?: IconLaunchOverlay.plateColor(icon)
+        val night = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val plate = if (night) PLATE_DARK else PLATE_LIGHT
         val geometry = geometry()
         iconLaunch.start(icon, plate, source,
             android.graphics.Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom), iconLaunchStyle)
@@ -1629,6 +1631,9 @@ class NeXtepWindowController(
     private val transitionInterpolator = DecelerateInterpolator(1.6f)
 
     private companion object {
+        /** The icon-launch plate: the tone of a blank window in light and dark mode. */
+        private const val PLATE_LIGHT = 0xFFF5F6F8.toInt()
+        private const val PLATE_DARK = 0xFF1E1F22.toInt()
         val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
         const val EXPECTED_WINDOW_COUNT = 3
         const val ARRIVAL_ATTEMPTS = 8
