@@ -60,10 +60,15 @@ internal class WideEdgeBackMonitor(
                         val down = event.actionMasked == MotionEvent.ACTION_DOWN
                         @Suppress("DEPRECATION")
                         if (down) display.getRealSize(size)
-                        when (detector.observe(event.actionMasked, event.rawX, event.rawY, event.pointerCount,
-                            event.eventTime, size.x, if (down) region() else null)) {
+                        when (val result = detector.observe(event.actionMasked, event.rawX, event.rawY,
+                            event.pointerCount, event.eventTime, size.x, if (down) region() else null)) {
                             // Claim the finger at DOWN so the system edge-back never sees it.
-                            WideEdgeBackGestureDetector.Result.STARTED -> pilfer.invoke(inputMonitor)
+                            WideEdgeBackGestureDetector.Result.STARTED -> {
+                                pilfer.invoke(inputMonitor)
+                                NeXtepLog.info("wide_back", "Edge swipe started x=${event.rawX.toInt()} y=${event.rawY.toInt()}")
+                            }
+                            WideEdgeBackGestureDetector.Result.ABANDONED ->
+                                NeXtepLog.info("wide_back", "Edge swipe dropped action=${event.actionMasked} $result")
                             WideEdgeBackGestureDetector.Result.CONFIRMED -> handler.post {
                                 NeXtepLog.info("wide_back", "Edge swipe back sent=${runCatching(sendBack).getOrDefault(false)}")
                             }

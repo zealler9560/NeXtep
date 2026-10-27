@@ -1604,6 +1604,23 @@ class NeXtepWindowController(
     }
 
     /** The pinned video's rectangle on the physical screen; null unless a video is pinned and shown. */
+    private var exclusionView: View? = null
+    private val exclusionLayout = View.OnLayoutChangeListener { view, left, top, right, bottom, _, _, _, _ ->
+        view.systemGestureExclusionRects = listOf(android.graphics.Rect(0, 0, right - left, bottom - top))
+    }
+
+    /** The system edge-back stays off the pinned video's edges; those swipes belong to [wideEdgeBack]. */
+    private fun setWideGestureExclusion(index: Int?) {
+        exclusionView?.let {
+            it.removeOnLayoutChangeListener(exclusionLayout)
+            it.systemGestureExclusionRects = emptyList()
+        }
+        exclusionView = index?.let { slotWindows.getOrNull(it)?.view }?.also {
+            it.addOnLayoutChangeListener(exclusionLayout)
+            it.systemGestureExclusionRects = listOf(android.graphics.Rect(0, 0, it.width, it.height))
+        }
+    }
+
     private fun wideBackRegion(): WideEdgeBackGestureDetector.Region? {
         if (!workspaceVisible || suspended) return null
         val view = wideSlotIndex?.let { slotWindows.getOrNull(it) }?.view ?: return null
@@ -1623,6 +1640,7 @@ class NeXtepWindowController(
         viewport.setWideSlot(index)
         if (index == null) wideAspectSampler.stop() else wideAspectSampler.start()
         if (index == null) wideEdgeBack.stop() else wideEdgeBack.start()
+        setWideGestureExclusion(index)
         backdropHandler.removeCallbacks(wideSnapshotTick)
         wideSnapshot?.recycle()
         wideSnapshot = null
