@@ -428,6 +428,8 @@ class NeXtepWindowController(
         val geometry = geometry()
         applyWindowGeometry(geometry)
         sidebarView?.let { applySlotLayout(it, geometry) }
+        // Like show(): returning to the workspace starts the column at its top.
+        sidebarView?.resetScroll()
         records.forEach { record ->
             record.view.animate().cancel()
             record.view.visibility = View.VISIBLE
