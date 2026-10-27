@@ -68,6 +68,13 @@ object ColorOsLauncherHook {
                         val intent = chain.args.getOrNull(1) as? Intent
                         if (!WorkspaceLauncherAnimationPolicy.useStaticSource(
                                 LauncherTransformController.isActive(), intent)) return chain.proceed()
+                        // ColorOS swallows taps during its return animation and then starts the previous
+                        // app's icon by itself (seen on ColorOS 17: WeChat tapped, 富途 opened with no tap
+                        // reaching the launcher). In the workspace only a launch the user tapped goes through.
+                        if (!LauncherTransformController.tappedRecently()) {
+                            NeXtepLog.warn("launcher_redirect", "Refused launch without a tap component=${intent?.component}")
+                            return false
+                        }
                         val args = chain.args.toTypedArray()
                         // Launcher3 records the icon's bounds only with a source view; SystemUI flies
                         // its own copy of the icon out of them instead, and the desktop icon leaves.

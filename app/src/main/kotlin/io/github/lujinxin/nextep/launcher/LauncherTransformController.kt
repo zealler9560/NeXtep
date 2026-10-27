@@ -161,6 +161,10 @@ object LauncherTransformController {
         return Rect(Math.round(lastTouchX) - half, Math.round(lastTouchY) - half, Math.round(lastTouchX) + half, Math.round(lastTouchY) + half)
     }
 
+    /** Whether the launcher's own window saw a tap just now: an icon launch without one did not come from the user. */
+    fun tappedRecently(): Boolean = android.os.SystemClock.uptimeMillis() - lastTouchAt <= TAP_LAUNCH_WINDOW_MS
+
+    private const val TAP_LAUNCH_WINDOW_MS = 1_000L
     private const val LAST_TAP_VALID_MS = 600L
     private const val FALLBACK_ICON_DP = 60f
 
