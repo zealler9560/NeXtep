@@ -753,7 +753,9 @@ class NeXtepWindowController(
             y = geometry.topHeight,
             windowType = windowType,
         )
+        if (records.size == EXPECTED_WINDOW_COUNT) iconLaunch.prepare()
         if (records.size != EXPECTED_WINDOW_COUNT) {
+            iconLaunch.release()
             records.forEach { record ->
                 try {
                     windowManager.removeView(record.view)

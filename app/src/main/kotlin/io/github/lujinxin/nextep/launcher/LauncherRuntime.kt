@@ -82,6 +82,11 @@ object LauncherRuntime {
             component.className == "com.heytap.quicksearchbox.ui.activity.SearchHomeActivity"
         ) return false
 
+        // A launch without a source view (a big folder's preview) still came from a tap: that spot
+        // is where the icon flies from.
+        if (intent.sourceBounds == null) {
+            intent.sourceBounds = LauncherTransformController.lastTapBounds(context.resources.displayMetrics.density)
+        }
         return runCatching {
             context.sendBroadcast(
                 TriggerBroadcastContract.launcherAppRequestIntent(

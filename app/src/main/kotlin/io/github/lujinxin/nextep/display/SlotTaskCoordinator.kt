@@ -811,8 +811,19 @@ class SlotTaskCoordinator(
             if (existing != null) {
                 promoteExistingToMain(existing, ::minimizePreviousMain, if (fromIcon) launchOptions().toBundle() else null)
             } else {
-                UserTargetedActivityLauncher.start(applicationContext, normalized, launchOptions().toBundle()).getOrThrow()
-                minimizePreviousMain()
+                val options = launchOptions().toBundle()
+                if (fromIcon) launchExecutor.execute {
+                    val started = UserTargetedActivityLauncher.start(applicationContext, normalized, options)
+                    handler.post {
+                        started.onFailure { error ->
+                            NeXtepLog.warn("top_apps", "Launch failed component=$component", error)
+                            showMessage(AppLanguage.string(applicationContext, R.string.workbench_launch_failed))
+                        }.onSuccess { minimizePreviousMain() }
+                    }
+                } else {
+                    UserTargetedActivityLauncher.start(applicationContext, normalized, options).getOrThrow()
+                    minimizePreviousMain()
+                }
                 val generation = mainSelectionGeneration
                 handler.postDelayed({
                     presentLaunchedMain(component, attempt = 1, generation = generation,
@@ -1110,6 +1121,8 @@ class SlotTaskCoordinator(
     private var rebindGeneration = 0
     private var rebindInFlight: java.util.concurrent.Future<*>? = null
     private val rebindExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "NeXtep-Rebind") }
+    /** Activity starts for icon launches: on the main thread the start held the icon flight for about 40 ms. */
+    private val launchExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "NeXtep-Launch") }
 
     /** The panels started their entry slide (a frame late on a cold entry); apps come back after it. */
     fun onEntrySlideStarted(durationMs: Long) {

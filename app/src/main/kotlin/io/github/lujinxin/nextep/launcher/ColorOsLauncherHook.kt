@@ -70,10 +70,13 @@ object ColorOsLauncherHook {
                         val args = chain.args.toTypedArray()
                         // Launcher3 records the icon's bounds only with a source view; SystemUI flies
                         // its own copy of the icon out of them instead, and the desktop icon leaves.
-                        (args[0] as? View)?.takeIf { it.width > 0 && it.isAttachedToWindow }?.let { icon ->
+                        val view = args[0] as? View
+                        val icon = view?.takeIf { it.width > 0 && it.isAttachedToWindow }
+                        if (icon != null) {
                             intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
                             liftIcon(icon)
-                        }
+                        } else NeXtepLog.info("launcher_redirect", "No icon source: view=${view?.javaClass?.name} " +
+                            "size=${view?.width}x${view?.height} attached=${view?.isAttachedToWindow} bounds=${intent?.sourceBounds}")
                         args[0] = null
                         return chain.proceed(args)
                     }

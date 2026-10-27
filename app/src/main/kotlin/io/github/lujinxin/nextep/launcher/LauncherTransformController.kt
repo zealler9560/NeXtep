@@ -127,9 +127,31 @@ object LauncherTransformController {
     fun isActive(): Boolean = active
 
     fun mapToContent(event: MotionEvent?): TouchCoordinateMapper.Transform? {
+        if (event != null && (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_UP)) {
+            lastTouchX = event.rawX
+            lastTouchY = event.rawY
+            lastTouchAt = event.eventTime
+        }
         val transform = if (active) appliedTransform else null
         return transform?.takeIf { TouchCoordinateMapper.toContent(event, it) }
     }
+
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var lastTouchAt = 0L
+
+    /**
+     * An icon-sized square around the last tap, in screen coordinates, for a launch whose source
+     * view the launcher did not hand over (a big folder's preview, the drawer); null once stale.
+     */
+    fun lastTapBounds(density: Float): Rect? {
+        if (android.os.SystemClock.uptimeMillis() - lastTouchAt > LAST_TAP_VALID_MS) return null
+        val half = Math.round(FALLBACK_ICON_DP * density / 2f)
+        return Rect(Math.round(lastTouchX) - half, Math.round(lastTouchY) - half, Math.round(lastTouchX) + half, Math.round(lastTouchY) + half)
+    }
+
+    private const val LAST_TAP_VALID_MS = 600L
+    private const val FALLBACK_ICON_DP = 60f
 
     fun mapToContent(view: View, event: MotionEvent?): TouchCoordinateMapper.Transform? {
         val transform = if (active) assistantTransforms[view.rootView ?: view] else null
