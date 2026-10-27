@@ -15,8 +15,30 @@ object NeXtepLog {
 
     fun recent(count: Int): String = synchronized(events) { events.toList().takeLast(count).joinToString("\n") }
 
-    /** Runs after each event: system_server mirrors its own into SystemUI's export through it. */
-    @Volatile var onEvent: (() -> Unit)? = null
+    @Volatile private var onEvent: (() -> Unit)? = null
+    private val mirrorPending = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Another process's events reach SystemUI's diagnostics export only through a setting: the
+     * last [count] are written there a second after the latest. Needs WRITE_SECURE_SETTINGS.
+     */
+    fun mirror(context: android.content.Context, key: String, count: Int = 80) {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        onEvent = {
+            if (mirrorPending.compareAndSet(false, true)) handler.postDelayed({
+                mirrorPending.set(false)
+                runCatching { android.provider.Settings.Global.putString(context.contentResolver, key, recent(count)) }
+                    .onFailure { Log.w(TAG, "Event mirror $key failed: $it") }
+            }, 1_000L)
+        }
+        onEvent?.invoke()
+    }
+
+    fun mirrored(context: android.content.Context, key: String): String? =
+        runCatching { android.provider.Settings.Global.getString(context.contentResolver, key) }.getOrNull()
+
+    const val SYSTEM_SERVER_EVENTS_KEY = "nextep_system_server_events_v1"
+    const val LAUNCHER_EVENTS_KEY = "nextep_launcher_events_v1"
 
     internal fun masked(message: String): String = URI.replace(message, "<uri>")
 

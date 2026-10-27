@@ -47,7 +47,7 @@ object SystemServerWorkspaceBridge {
                 resolver.registerContentObserver(Settings.Global.getUriFor(PRIVATE_TASKS_KEY), false, observer)
                 resolver.registerContentObserver(Settings.Global.getUriFor(WIDE_DISPLAY_KEY), false, observer)
                 refresh()
-                mirrorServerEvents(context, handler)
+                NeXtepLog.mirror(context, NeXtepLog.SYSTEM_SERVER_EVENTS_KEY)
             }.onFailure {
                 geometryObservationStarted.set(false)
                 NeXtepLog.warn("system_server_bridge", "Geometry observation unavailable", it)
@@ -57,23 +57,6 @@ object SystemServerWorkspaceBridge {
 
     fun observedActiveGeometry(): WorkspaceGeometry? = observedGeometry
 
-    private const val SERVER_EVENTS_KEY = "nextep_system_server_events_v1"
-    private const val SERVER_EVENTS = 80
-    private val serverEventsPending = AtomicBoolean(false)
-
-    /** system_server's events reach SystemUI's diagnostics export only through this setting, a second after the last. */
-    private fun mirrorServerEvents(context: Context, handler: Handler) {
-        NeXtepLog.onEvent = {
-            if (serverEventsPending.compareAndSet(false, true)) handler.postDelayed({
-                serverEventsPending.set(false)
-                runCatching { Settings.Global.putString(context.contentResolver, SERVER_EVENTS_KEY, NeXtepLog.recent(SERVER_EVENTS)) }
-            }, 1_000L)
-        }
-        NeXtepLog.onEvent?.invoke()
-    }
-
-    fun serverEvents(context: Context): String? =
-        runCatching { Settings.Global.getString(context.contentResolver, SERVER_EVENTS_KEY) }.getOrNull()
 
     /** system_server hot paths: RAM only, never a Settings IPC under the WM lock. */
     fun observedActive(context: Context): Boolean {

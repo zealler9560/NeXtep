@@ -495,7 +495,9 @@ internal class WorkbenchToolsController(
                 it.write(runCatching { environment() }.getOrElse { "environment failed $it\n" })
                 it.write(NeXtepLog.diagnostics())
                 it.write("\n--- launcher\n${launcher ?: "no answer"}\n")
-                it.write("\n--- system_server\n${io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge.serverEvents(context) ?: "no events"}\n")
+                it.write("\n--- system_server\n${NeXtepLog.mirrored(context, NeXtepLog.SYSTEM_SERVER_EVENTS_KEY) ?: "no events"}\n")
+                // The launcher-side probe writes this itself; empty means the module is not running in the launcher.
+                it.write("\n--- launcher (mirrored)\n${NeXtepLog.mirrored(context, NeXtepLog.LAUNCHER_EVENTS_KEY) ?: "no events"}\n")
             }
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         }.onSuccess { message(R.string.workbench_exported) }.onFailure {

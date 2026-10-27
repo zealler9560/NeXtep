@@ -95,12 +95,20 @@ object MiuiHomeProbe {
         val active = runCatching {
             android.provider.Settings.Global.getInt(activity.contentResolver, "nextep_workspace_active_v1", 0)
         }.getOrDefault(-1)
+        // The HyperOS launcher ships a Flutter engine (libapp.so); Dart-drawn views carry no scale a View hook could see.
+        val flutter = decor?.let { count(it) { view -> view.javaClass.name.contains("Flutter") } } ?: 0
         NeXtepLog.info("miui_home", "Resumed ${activity.javaClass.name} workbench=$active decor=${decor?.width}x${decor?.height} " +
-            "scale=${decor?.scaleX} tx=${decor?.translationX} ty=${decor?.translationY} pivot=${decor?.pivotX},${decor?.pivotY}")
+            "scale=${decor?.scaleX} tx=${decor?.translationX} ty=${decor?.translationY} pivot=${decor?.pivotX},${decor?.pivotY} flutterViews=$flutter")
     }
+
+    private fun count(view: android.view.View, matches: (android.view.View) -> Boolean): Int =
+        (if (matches(view)) 1 else 0) + ((view as? android.view.ViewGroup)?.let { group ->
+            (0 until group.childCount).sumOf { count(group.getChildAt(it), matches) } } ?: 0)
 
     private fun register(context: Context) {
         if (!registered.compareAndSet(false, true)) return
+        // The ordered query went unanswered on every HyperOS export so far; the setting tells whether this runs at all.
+        NeXtepLog.mirror(context, NeXtepLog.LAUNCHER_EVENTS_KEY)
         runCatching {
             context.registerReceiver(object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: Intent) = LauncherDiagnosticsContract.answer(this, intent)
