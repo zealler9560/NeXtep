@@ -25,68 +25,64 @@ class WorkspaceSwapAnimatorTest {
         .apply { isAccessible = true }.get(animator) as? View
     private fun WorkspaceSwapAnimator(context: android.content.Context) = WorkspaceSwapAnimator(context) { WorkbenchAppearance.DARK }
 
+    private fun shown(animator: WorkspaceSwapAnimator) = preview(animator)?.visibility == View.VISIBLE
+
     @Test fun contentExpansionUsesOneCapturableOverlayAndReleasesEveryAppPreviewOnCancel() {
         val animator = WorkspaceSwapAnimator(context)
         val bitmaps = List(5) { Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888) }
         val frames = bitmaps.mapIndexed { index, bitmap -> WorkspaceSwapAnimator.Frame(bitmap,
             RectF(260f, index * 80f, 300f, index * 80f + 80), RectF(0f, 100f, 240f, 580f)) }
         var moved = false
-        animator.animateFrames(frames, frames.map { it.from }, 320, 640) { moved = true }
+        animator.animateFrames(frames, frames.map { it.from }) { moved = true }
         val view = checkNotNull(preview(animator))
+        assertTrue(shown(animator))
         // ColorOS 16 blurs the control centre from a screen capture, where a secure window is black.
         assertEquals(0, (view.layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_SECURE)
         animator.cancel()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         assertFalse(moved)
         assertTrue(bitmaps.all { it.isRecycled })
+        assertFalse(shown(animator))
+    }
+
+    @Test fun theOverlayWindowIsAddedOnceAndKeptHiddenBetweenExchanges() {
+        val animator = WorkspaceSwapAnimator(context)
+        val rect = RectF(0f, 0f, 40f, 80f)
+        animator.animate(null, null, true, rect, rect, rect) { }
+        val first = checkNotNull(preview(animator))
+        animator.cancel()
+        assertSame(first, preview(animator))
+        assertEquals(View.INVISIBLE, first.visibility)
+        animator.animate(null, null, true, rect, rect, rect) { }
+        assertSame(first, preview(animator))
+        assertTrue(shown(animator))
+        animator.release()
         assertNull(preview(animator))
     }
 
-    @Test fun aCardTakesTheFreshPictureItFadesFromAndReleasesTheOldOne() {
-        val animator = WorkspaceSwapAnimator(context)
-        val source = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888)
-        val rect = RectF(0f, 0f, 240f, 480f)
-        animator.animate(source, null, true, rect, rect, rect, 320, 640) { }
-        val fresh = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888)
-        var done = false
-        animator.refresh(1, fresh) { done = true }
-        // The card dissolves from the old picture into the fresh one, then hands over.
-        val view = checkNotNull(preview(animator)) as SwapPreviewView
-        assertSame(fresh, view.frames[1].bitmap)
-        assertSame(source, view.fading?.second)
-        assertFalse(done)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(300))
-        assertTrue(done)
-        assertTrue(source.isRecycled)
-        assertNull(view.fading)
-        // Without an overlay the picture has nowhere to go: it is released and the hand-over still runs.
-        animator.cancel()
-        val late = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888)
-        var lateDone = false
-        animator.refresh(1, late) { lateDone = true }
-        assertTrue(late.isRecycled)
-        assertTrue(lateDone)
-    }
-
-    @Test fun previewWaitsForCompletionInsteadOfAFixedDelay() {
+    @Test fun theMoveWaitsForTheFinalFrameAndTheRevealCutsInOneFrame() {
         val animator = WorkspaceSwapAnimator(context)
         val source = Bitmap.createBitmap(40, 80, Bitmap.Config.ARGB_8888)
         var moves = 0
         var reveal: (() -> Unit)? = null
         val small = RectF(260f, 100f, 300f, 180f)
         val main = RectF(0f, 100f, 240f, 580f)
-        animator.animate(source, null, false, small, small, main, 320, 640) {
+        animator.animate(source, null, false, small, small, main) {
             moves++
             reveal = it
         }
-        val view = checkNotNull(preview(animator))
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(800))
+        // Still animating at 250 ms of 300.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+        assertEquals(0, moves)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(550))
         assertEquals(1, moves)
-        assertSame(view, preview(animator))
+        assertTrue(shown(animator))
         assertFalse(source.isRecycled)
         checkNotNull(reveal).invoke()
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
-        assertNull(preview(animator))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(40))
+        // No fade: hidden at full opacity, its frames released.
+        assertFalse(shown(animator))
+        assertEquals(1f, checkNotNull(preview(animator)).alpha)
         assertTrue(source.isRecycled)
     }
 
@@ -94,10 +90,10 @@ class WorkspaceSwapAnimatorTest {
         val animator = WorkspaceSwapAnimator(context)
         val source = Bitmap.createBitmap(40, 80, Bitmap.Config.ARGB_8888)
         val rect = RectF(0f, 0f, 40f, 80f)
-        animator.animate(source, null, false, rect, rect, rect, 320, 640) { fail("Cancelled transition moved a task") }
+        animator.animate(source, null, false, rect, rect, rect) { fail("Cancelled transition moved a task") }
         animator.cancel()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
-        assertNull(preview(animator))
+        assertFalse(shown(animator))
         assertTrue(source.isRecycled)
     }
 
@@ -105,16 +101,28 @@ class WorkspaceSwapAnimatorTest {
         val animator = WorkspaceSwapAnimator(context)
         val rect = RectF(0f, 0f, 40f, 80f)
         var oldReveal: (() -> Unit)? = null
-        animator.animate(null, null, true, rect, rect, RectF(0f, 0f, 240f, 480f), 320, 640) { oldReveal = it }
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
-        assertNotNull(preview(animator))
+        animator.animate(null, null, true, rect, rect, RectF(0f, 0f, 240f, 480f)) { oldReveal = it }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        assertTrue(shown(animator))
         animator.cancel()
-        animator.animate(null, null, true, rect, rect, rect, 320, 640) { }
-        val newer = preview(animator)
+        animator.animate(null, null, true, rect, rect, rect) { }
         checkNotNull(oldReveal).invoke()
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
-        assertSame(newer, preview(animator))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+        assertTrue(shown(animator))
         animator.cancel()
+    }
+
+    @Test fun aPaneCountsAsArrivedOnlyWithANewPicture() {
+        val outgoing = IntArray(144) { if (it % 2 == 0) 40 else 200 }
+        val incoming = IntArray(144) { if (it % 3 == 0) 230 else 20 }
+        assertFalse(pictureArrived(outgoing.copyOf(), outgoing))
+        assertTrue(pictureArrived(incoming, outgoing))
+        // A blank frame or no frame at all is the display still settling.
+        assertFalse(pictureArrived(IntArray(144) { 12 }, outgoing))
+        assertFalse(pictureArrived(IntArray(0), outgoing))
+        // A pane that cannot tell (a mirror shows the app) does not hold the cut.
+        assertTrue(pictureArrived(null, outgoing))
+        assertTrue(pictureArrived(incoming, null))
     }
 
     @Test fun emptySlotPreviewsMatchTheLiveCardInEitherAppearanceInsteadOfAFixedDarkBox() {

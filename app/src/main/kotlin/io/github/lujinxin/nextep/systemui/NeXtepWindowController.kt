@@ -759,9 +759,13 @@ class NeXtepWindowController(
             y = geometry.topHeight,
             windowType = windowType,
         )
-        if (records.size == EXPECTED_WINDOW_COUNT) iconLaunch.prepare()
+        if (records.size == EXPECTED_WINDOW_COUNT) {
+            iconLaunch.prepare()
+            swapAnimator.prepare()
+        }
         if (records.size != EXPECTED_WINDOW_COUNT) {
             iconLaunch.release()
+            swapAnimator.release()
             records.forEach { record ->
                 try {
                     windowManager.removeView(record.view)
@@ -1025,8 +1029,7 @@ class NeXtepWindowController(
         frames.add(WorkspaceSwapAnimator.Frame(slotWindows[index].view.captureProtectedPreview(),
             android.graphics.RectF(bounds[index]), android.graphics.RectF(next.contentLeft.toFloat(),
                 next.contentTop.toFloat(), next.contentRight.toFloat(), next.contentBottom.toFloat())))
-        swapAnimator.animateFrames(frames, listOf(main) + bounds.map { android.graphics.RectF(it) },
-            old.screenWidth, old.screenHeight) { reveal ->
+        swapAnimator.animateFrames(frames, listOf(main) + bounds.map { android.graphics.RectF(it) }) { reveal ->
             if (!valid() || !workspaceVisible || suspended || !contentSide(destinationSide)) {
                 reveal(); rejected()
             } else move(reveal)
@@ -1113,34 +1116,72 @@ class NeXtepWindowController(
         val targetPreview = if (targetIndex != null) {
             if (targetOccupied) slotWindows[targetIndex].view.captureProtectedPreview() else null
         } else mainTaskPresenter.currentTaskId()?.let { mainPanePreview(it, geometry) }
-        // An app lays out again when it changes window, and some pad their top for a status bar even in a
-        // side pane: just before the card fades, it takes the app as the main window now shows it.
-        val reveal: (() -> Unit) -> Unit = if (targetIndex != null) move else { show ->
-            move { refreshArrivedMain(show, swapAnimator.current, attempt = 0, previous = null) }
+        // The task metadata settles before the apps have drawn in their new windows: the cards stay until
+        // each pane shows its new app and the main window's app has laid out again, then cut in one frame.
+        val panes = listOfNotNull(drag.slotIndex, targetIndex)
+        val before = HashMap<Int, IntArray?>()
+        panes.forEach { index -> slotWindows[index].sampleOutput { before[index] = it } }
+        val reveal: (() -> Unit) -> Unit = { show ->
+            move {
+                val animation = swapAnimator.current
+                var waiting = if (targetIndex == null) 2 else 1
+                val arrived = { if (--waiting == 0) show() }
+                whenPanesShowNew(panes, before, animation, android.os.SystemClock.uptimeMillis(), arrived)
+                if (targetIndex == null) whenMainArrived(arrived, animation, attempt = 0, previous = null)
+            }
         }
         swapAnimator.animate(sourcePreview, targetPreview, !targetOccupied, startRect,
-            android.graphics.RectF(sourceRect), android.graphics.RectF(targetRect),
-            geometry.screenWidth, geometry.screenHeight, reveal)
+            android.graphics.RectF(sourceRect), android.graphics.RectF(targetRect), reveal)
+    }
+
+    /**
+     * Runs [ready] once every pane in [panes] that holds an app shows a picture of it: not blank, and not
+     * [before], the outgoing app's. Never before [PANE_ARRIVAL_MIN_MS]; at the latest after [PANE_ARRIVAL_MAX_MS].
+     */
+    private fun whenPanesShowNew(panes: List<Int>, before: Map<Int, IntArray?>, animation: Int, since: Long,
+                                 ready: () -> Unit) {
+        if (swapAnimator.current != animation) return ready()
+        val elapsed = android.os.SystemClock.uptimeMillis() - since
+        fun next(arrived: Boolean) {
+            if (arrived && elapsed >= PANE_ARRIVAL_MIN_MS) return ready()
+            if (elapsed >= PANE_ARRIVAL_MAX_MS) {
+                NeXtepLog.info("slot_drag", "Pane pictures not new after ${elapsed}ms; cutting to the live panes")
+                return ready()
+            }
+            android.view.Choreographer.getInstance().postFrameCallback {
+                whenPanesShowNew(panes, before, animation, since, ready)
+            }
+        }
+        val states = slotCoordinator?.slotStates().orEmpty()
+        val waiting = panes.filter { states.getOrNull(it) is SlotState.Occupied }
+        if (waiting.isEmpty()) return next(true)
+        var left = waiting.size
+        var all = true
+        waiting.forEach { index ->
+            slotWindows[index].sampleOutput { grid ->
+                if (!pictureArrived(grid, before[index])) all = false
+                if (--left == 0) next(all)
+            }
+        }
     }
 
     /**
      * The app lays out again in the main window (it has status and gesture bars there, none in a pane), so
-     * the swap card dissolves into the app as the main window shows it, then [show]s the live app. It waits
-     * for that layout to settle: two like pictures in a row that are not its bare (flat) window. A picture
-     * that keeps changing (a video) is taken after about 300 ms.
+     * the swap card stays until that layout settles: two like pictures in a row that are not its bare (flat)
+     * window. A picture that keeps changing (a video) counts after about 300 ms.
      */
-    private fun refreshArrivedMain(show: () -> Unit, animation: Int, attempt: Int, previous: IntArray?) {
+    private fun whenMainArrived(show: () -> Unit, animation: Int, attempt: Int, previous: IntArray?) {
         if (swapAnimator.current != animation) return show()
         val shot = mainTaskPresenter.currentTaskId()?.let { mainPanePreview(it, geometry()) }
         val luma = shot?.let(::lumaGrid)
-        val settled = luma != null && luma.max() - luma.min() >= 24 && previous != null &&
+        shot?.recycle()
+        val settled = luma != null && luma.max() - luma.min() >= BLANK_SPREAD && previous != null &&
             luma.indices.all { kotlin.math.abs(luma[it] - previous[it]) < 6 }
         if (!settled && attempt < ARRIVAL_ATTEMPTS) {
-            shot?.recycle()
-            backdropHandler.postDelayed({ refreshArrivedMain(show, animation, attempt + 1, luma) }, ARRIVAL_RETRY_MS)
+            backdropHandler.postDelayed({ whenMainArrived(show, animation, attempt + 1, luma) }, ARRIVAL_RETRY_MS)
             return
         }
-        swapAnimator.refresh(1, shot, animation, show)
+        show()
     }
 
     private fun lumaGrid(bitmap: android.graphics.Bitmap): IntArray = IntArray(9 * 16) { i ->
@@ -1395,7 +1436,7 @@ class NeXtepWindowController(
         val frozen = strip != null && swapAnimator.freeze(listOf(
             WorkspaceSwapAnimator.Frame(stripShot, strip, strip, topFill = true),
             WorkspaceSwapAnimator.Frame(mainShot, mainFrom, mainFrom),
-        ), listOf(strip, mainFrom), geometry().screenWidth, geometry().screenHeight)
+        ), listOf(strip, mainFrom))
         if (frozen) backdropHandler.postDelayed({
             if (generation == wideGeneration) swapAnimator.dismissFrozen()
         }, WIDE_REVEAL_FALLBACK_MS)
@@ -1457,7 +1498,7 @@ class NeXtepWindowController(
             WorkspaceSwapAnimator.Frame(mainPreview(), mainFrom, mainFrom, topFill = true),
             WorkspaceSwapAnimator.Frame(slotWindows[index].view.captureProtectedPreview(), cardFrom, cardFrom,
                 empty = states.getOrNull(index) !is SlotState.Occupied),
-        ), listOfNotNull(topBar?.from, mainFrom, cardFrom), geometry().screenWidth, geometry().screenHeight)
+        ), listOfNotNull(topBar?.from, mainFrom, cardFrom))
         var reveal: (() -> Unit)? = null
         var live = false
         fun revealWhenLive() {
@@ -1556,8 +1597,7 @@ class NeXtepWindowController(
      */
     private fun holdMainUntilReplaced(previous: Int?) {
         val rect = mainRect()
-        if (!swapAnimator.freeze(listOf(WorkspaceSwapAnimator.Frame(mainPreview(), rect, rect)), listOf(rect),
-                geometry().screenWidth, geometry().screenHeight)) return
+        if (!swapAnimator.freeze(listOf(WorkspaceSwapAnimator.Frame(mainPreview(), rect, rect)), listOf(rect))) return
         val generation = ++wideGeneration
         backdropHandler.postDelayed({ if (generation == wideGeneration) swapAnimator.dismissFrozen() }, WIDE_REVEAL_FALLBACK_MS)
         whenWideDrawn(null, generation, replacing = previous) { swapAnimator.fadeFrozen() }
@@ -1672,6 +1712,8 @@ class NeXtepWindowController(
         const val EXPECTED_WINDOW_COUNT = 3
         const val ARRIVAL_ATTEMPTS = 8
         const val ARRIVAL_RETRY_MS = 40L
+        const val PANE_ARRIVAL_MIN_MS = 80L
+        const val PANE_ARRIVAL_MAX_MS = 600L
         const val BACKDROP_SETTLE_REFRESHES = 2
         const val BACKDROP_MAX_RETRIES = 8
         const val WORKSPACE_ENTER_DURATION_MS = 240L
@@ -1692,3 +1734,19 @@ class NeXtepWindowController(
         const val SIDEBAR_ENTER_OFFSET_DP = 28
     }
 }
+
+/** A luma grid with less spread than this is a blank window, not an app's picture. */
+internal const val BLANK_SPREAD = 24
+
+/**
+ * Whether a pane's [grid] shows its new app: a picture (not blank, not missing) that is not [before], the
+ * outgoing app's. A null grid is a pane that cannot tell, such as one showing a mirror: it counts as arrived.
+ */
+internal fun pictureArrived(grid: IntArray?, before: IntArray?): Boolean {
+    if (grid == null) return true
+    if (grid.isEmpty() || grid.max() - grid.min() < BLANK_SPREAD) return false
+    if (before == null || before.size != grid.size) return true
+    return grid.indices.sumOf { kotlin.math.abs(grid[it] - before[it]) } / grid.size >= CHANGED_MEAN
+}
+
+private const val CHANGED_MEAN = 6

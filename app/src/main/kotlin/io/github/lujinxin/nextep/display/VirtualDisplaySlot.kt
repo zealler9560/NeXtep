@@ -322,6 +322,35 @@ class VirtualDisplaySlot(
         }
     }
 
+    /**
+     * The output's visible part as a 9x16 luma grid, for telling when a moved app's picture has arrived.
+     * Empty when the output has no frame; null when the output cannot tell, as when a mirror shows the app.
+     */
+    fun sampleOutput(done: (IntArray?) -> Unit) {
+        val output = view.textureView
+        if (mirror?.isValid == true || !output.holder.surface.isValid) return done(null)
+        val frame = output.holder.surfaceFrame
+        val crop = layoutProfile?.slotCrop(index)?.coerceIn(0, frame.height() - 1) ?: 0
+        val probe = android.graphics.Bitmap.createBitmap(9, 16, android.graphics.Bitmap.Config.ARGB_8888)
+        runCatching {
+            android.view.PixelCopy.request(output, android.graphics.Rect(0, crop, frame.width(), frame.height()), probe, { result ->
+                val grid = when (result) {
+                    android.view.PixelCopy.SUCCESS -> IntArray(probe.width * probe.height).also {
+                        probe.getPixels(it, 0, probe.width, 0, 0, probe.width, probe.height)
+                    }.map { (android.graphics.Color.red(it) * 3 + android.graphics.Color.green(it) * 6 + android.graphics.Color.blue(it)) / 10 }
+                        .toIntArray()
+                    android.view.PixelCopy.ERROR_SOURCE_NO_DATA -> IntArray(0)
+                    else -> null
+                }
+                probe.recycle()
+                done(grid)
+            }, mainHandler)
+        }.onFailure {
+            probe.recycle()
+            done(null)
+        }
+    }
+
     private fun probeOutput(report: (String) -> Unit) {
         val output = view.textureView
         if (!output.holder.surface.isValid) return report("no surface")
