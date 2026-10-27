@@ -19,6 +19,11 @@ class SlotPauseRules(
         return blocker(true, index == wideSlot(), inCall(), playing(packageName))
     }
 
+    /** Why a pane scrolled out of the rail's window stays live; the chosen-apps list does not
+     * apply (nothing is on screen to watch), media, calls and the wide pane still keep it live. */
+    fun offscreenBlocker(index: Int, packageName: String): String? =
+        blocker(true, index == wideSlot(), inCall(), playing(packageName))
+
     // A call keeps every pane live: the mode does not say which app holds it.
     private fun inCall(): Boolean = audio?.mode.let { it != null && it != AudioManager.MODE_NORMAL && it != AudioManager.MODE_RINGTONE }
 
