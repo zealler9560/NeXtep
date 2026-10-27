@@ -74,8 +74,8 @@ object ColorOsLauncherHook {
                         val view = args[0] as? View
                         val icon = view?.takeIf { it.width > 0 && it.isAttachedToWindow }
                         if (icon != null) {
-                            // A launcher that filled the bounds itself keeps them; the icon bitmap rides along.
-                            if (intent?.sourceBounds == null) intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
+                            // Launcher3's own bounds take in the label below the icon; the icon's square is the source.
+                            intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
                             iconBitmap(icon)?.let { intent?.putExtra(TriggerBroadcastContract.EXTRA_ICON_BITMAP, it) }
                             liftIcon(icon)
                         } else NeXtepLog.info("launcher_redirect", "No icon source: view=${view?.javaClass?.name} " +
