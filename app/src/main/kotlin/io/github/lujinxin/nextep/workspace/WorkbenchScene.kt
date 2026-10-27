@@ -1,6 +1,7 @@
 package io.github.lujinxin.nextep.workspace
 
-import io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT
+import io.github.lujinxin.nextep.display.MAX_WORKSPACE_SLOTS
+import io.github.lujinxin.nextep.display.WORKSPACE_VISIBLE_SLOT_COUNT
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -26,8 +27,8 @@ data class WorkbenchScene(
         const val TEXT_UNITS = 4
 
         fun builtins(): List<WorkbenchScene> = listOf(
-            WorkbenchScene(BUILTIN_COMPARE, null, List(WORKSPACE_SLOT_COUNT) { null }, builtin = BUILTIN_COMPARE),
-            WorkbenchScene(BUILTIN_PAYMENT, null, List(WORKSPACE_SLOT_COUNT) { null }, builtin = BUILTIN_PAYMENT),
+            WorkbenchScene(BUILTIN_COMPARE, null, List(WORKSPACE_VISIBLE_SLOT_COUNT) { null }, builtin = BUILTIN_COMPARE),
+            WorkbenchScene(BUILTIN_PAYMENT, null, List(WORKSPACE_VISIBLE_SLOT_COUNT) { null }, builtin = BUILTIN_PAYMENT),
         )
 
         fun encode(scenes: List<WorkbenchScene>): String = JSONArray().apply {
@@ -46,7 +47,12 @@ data class WorkbenchScene(
                 // optString renders a JSON null as the text "null"; test for null explicitly.
                 fun nullable(key: String) = if (!item.has(key) || item.isNull(key)) null else item.getString(key)
                 WorkbenchScene(item.getString("name"), nullable("main"),
-                    (0 until WORKSPACE_SLOT_COUNT).map { if (slots.isNull(it)) null else slots.getString(it) },
+                    // Slot lists are length-agnostic: a scene saved with any roster size keeps
+                    // its entries (the coordinator ignores indices it does not have), capped
+                    // at the roster maximum.
+                    (0 until minOf(slots.length(), MAX_WORKSPACE_SLOTS)).map {
+                        if (slots.isNull(it)) null else slots.getString(it)
+                    },
                     nullable("icon")?.takeIf { it in PRESET_ICONS }, nullable("builtin"))
             }
         }.getOrDefault(emptyList())
