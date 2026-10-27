@@ -91,6 +91,33 @@ object TaskSurfaceCompat {
         shellBusyUntil = SystemClock.uptimeMillis() + SHELL_BUSY_MS
     }
 
+    @Volatile private var foreignWriteLoggedAt = 0L
+
+    /**
+     * A SystemUI write of [scaleX]/[scaleY] or [positionX]/[positionY] (null when the call did not set it) to [surface].
+     * HyperOS rewrote the desktop's leash to full size while its pages were swiped, outside any Shell transition
+     * or callback, and the gated fitting left the desktop full size until Shell next moved. A write that is not
+     * the pane's own value opens the fitting at once, so the same commit puts the pane back.
+     */
+    fun noteLeashWrite(surface: SurfaceControl, scaleX: Float?, scaleY: Float?, positionX: Float?, positionY: Float?) {
+        if (!desktopScaledHere || activePresentations.isEmpty() || shellMayWrite()) return
+        val presentation = activePresentations.values.firstOrNull { sameSurface(surface, it.leash as SurfaceControl) } ?: return
+        val frame = presentation.frame
+        if ((scaleX == null || scaleX == frame.scaleX) && (scaleY == null || scaleY == frame.scaleY) &&
+            (positionX == null || positionX == frame.positionX) && (positionY == null || positionY == frame.positionY)) return
+        markShellBusy()
+        val now = SystemClock.uptimeMillis()
+        if (now - foreignWriteLoggedAt < FOREIGN_WRITE_LOG_MS) return
+        foreignWriteLoggedAt = now
+        val caller = Throwable().stackTrace.asSequence()
+            .filterNot { it.className.startsWith("io.github.lujinxin") || it.className.startsWith("io.github.libxposed") ||
+                it.className.startsWith("android.view.SurfaceControl") || it.className.startsWith("java.lang.reflect") ||
+                it.className.startsWith("org.lsposed") || it.className.startsWith("LSPHooker") }
+            .take(6).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}" }
+        NeXtepLog.info("task_surface", "Refitted the main pane after a write to its leash task=${presentation.taskId} " +
+            "scale=$scaleX,$scaleY position=$positionX,$positionY by $caller")
+    }
+
     /**
      * Shell writes task leashes only in transitions and task callbacks. HyperOS's SystemUI applies
      * transactions every frame for its own blur and panels; re-writing the pane transform into each
@@ -975,6 +1002,7 @@ object TaskSurfaceCompat {
     /** Longer than any default Shell animation; a launcher-driven one keeps composing through its lift. */
     private const val SHELL_BUSY_MS = 3_000L
     private const val STATS_WINDOW_MS = 10_000L
+    private const val FOREIGN_WRITE_LOG_MS = 2_000L
     /** TransitionInfo.FLAG_IS_WALLPAPER (hidden). */
     private const val FLAG_IS_WALLPAPER = 1 shl 1
 }
