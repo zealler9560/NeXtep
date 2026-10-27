@@ -251,7 +251,9 @@ class MainTaskPresentationCoordinator(context: Context) {
      */
     private fun applyMainBounds(task: TaskRepository.TaskSnapshot, geometry: WorkspaceGeometry,
                                 fresh: Boolean = false): Result<Unit> {
-        val height = geometry.mainTaskHeight
+        // The desktop keeps its full height, as on ColorOS where its own launcher scales it.
+        val home = task.component.packageName == TriggerBroadcastContract.resolveHomePackage(applicationContext)
+        val height = if (home) 0 else geometry.mainTaskHeight
         if (height <= 0) {
             if (shortenedTaskId == task.taskId) shortenedTaskId = null
             return clearFullscreenBounds(task, fresh)

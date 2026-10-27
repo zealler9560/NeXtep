@@ -74,6 +74,7 @@ object TaskSurfaceCompat {
     private val transactionGuard = SurfaceTransactionGuard<Any>(
         appendOwnedTransforms = ::appendOwnedTransforms,
         shouldCompose = { activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() ||
+            liftedRoots.isNotEmpty() || wallpaperResets.isNotEmpty() ||
             entryPresentations.isNotEmpty() || slotSurfaces.isNotEmpty() },
         onFailure = { NeXtepLog.warn("task_surface", "Native transaction fitting failed open", it) },
     )
@@ -85,8 +86,10 @@ object TaskSurfaceCompat {
     @Volatile var desktopScaledHere = false
 
     private class LiftedRoot(val root: SurfaceControl, val offsetX: Float, val offsetY: Float,
-        val tasks: List<SurfaceControl>, val since: Long)
+        val tasks: List<SurfaceControl>, val wallpapers: List<SurfaceControl>, val unscaled: SurfaceFrame, val since: Long)
     private val liftedRoots = ConcurrentHashMap<Any, LiftedRoot>()
+    /** Wallpapers a finished lift left counter-scaled; the next commit, Shell's finish, puts them back. */
+    private val wallpaperResets = java.util.concurrent.ConcurrentLinkedQueue<SurfaceControl>()
 
     /**
      * HyperOS plays its desktop's window animations through Shell's recents handler, the launcher
@@ -109,20 +112,20 @@ object TaskSurfaceCompat {
                 "tasks=${changes.map { (invokeRequired(it, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.taskId }}")
             return@runCatching false
         }
-        // A wallpaper under the root would shrink into the pane and bare the screen around it.
-        if (changes.any { (invokeRequired(it, "getFlags") as Int) and FLAG_IS_WALLPAPER != 0 }) {
-            NeXtepLog.info("task_surface", "Transition type=$type moves the wallpaper; its root stays unscaled")
-            return@runCatching false
-        }
+        // The wallpaper rides the root too (going home shows it); it keeps the screen, counter-scaled.
+        val wallpapers = changes.filter { (invokeRequired(it, "getFlags") as Int) and FLAG_IS_WALLPAPER != 0 }
+            .mapNotNull { invokeRequired(it, "getLeash") as? SurfaceControl }
         val root = (0 until invokeRequired(info, "getRootCount") as Int).map { invokeRequired(info, "getRoot", it)!! }
             .firstOrNull { invokeRequired(it, "getDisplayId") == Display.DEFAULT_DISPLAY } ?: return@runCatching false
         val rootLeash = invokeRequired(root, "getLeash") as SurfaceControl
         val offset = invokeRequired(root, "getOffset") as android.graphics.Point
         val frame = rootFrame(SurfaceFrame(pane.scaleX, pane.scaleY, pane.positionX, pane.positionY), offset.x, offset.y)
-        liftedRoots[transition] = LiftedRoot(rootLeash, offset.x.toFloat(), offset.y.toFloat(), leashes, SystemClock.uptimeMillis())
+        liftedRoots[transition] = LiftedRoot(rootLeash, offset.x.toFloat(), offset.y.toFloat(),
+            leashes.filterNot { leash -> wallpapers.any { sameSurface(it, leash) } }, wallpapers,
+            unscaledUnder(SurfaceFrame(pane.scaleX, pane.scaleY, pane.positionX, pane.positionY)), SystemClock.uptimeMillis())
         start.setScale(rootLeash, frame.scaleX, frame.scaleY).setPosition(rootLeash, frame.positionX, frame.positionY)
         NeXtepLog.info("task_surface", "Lifted transition type=$type into the main pane through its root " +
-            "tasks=${changes.map { (invokeRequired(it, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.taskId }}")
+            "tasks=${changes.map { (invokeRequired(it, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.taskId }} wallpapers=${wallpapers.size}")
         true
     }.getOrElse { error ->
         NeXtepLog.error("task_surface", "Transition root lift failed", error)
@@ -133,6 +136,7 @@ object TaskSurfaceCompat {
     fun dropTransitionRoot(transition: Any, start: SurfaceControl.Transaction? = null) {
         val lift = liftedRoots.remove(transition) ?: return
         if (start != null && lift.root.isValid) start.setScale(lift.root, 1f, 1f).setPosition(lift.root, lift.offsetX, lift.offsetY)
+        wallpaperResets += lift.wallpapers
         NeXtepLog.info("task_surface", "Transition root released after ${SystemClock.uptimeMillis() - lift.since}ms" +
             if (start != null) " unplayed" else "")
     }
@@ -629,6 +633,14 @@ object TaskSurfaceCompat {
     }
 
     private fun appendOwnedTransforms(transaction: Any) {
+        val native = transaction as SurfaceControl.Transaction
+        // Shell lays a wallpaper out at its root's origin and WM never moves it back; restore exactly that.
+        generateSequence { wallpaperResets.poll() }.filter { it.isValid }.forEach { native.setScale(it, 1f, 1f).setPosition(it, 0f, 0f) }
+        liftedRoots.values.forEach { lift ->
+            if (lift.root.isValid) lift.wallpapers.filter { it.isValid }.forEach {
+                native.setScale(it, lift.unscaled.scaleX, lift.unscaled.scaleY).setPosition(it, lift.unscaled.positionX, lift.unscaled.positionY)
+            }
+        }
         // WM Shell's animation and finish transactions can be queued before presentation.
         // Fit at commit, after their writes, so no identity-sized frame reaches the display
         // between polling corrections. Use the current animation frame, not its final target.
@@ -927,6 +939,11 @@ object TaskSurfaceCompat {
     /** TransitionInfo.FLAG_IS_WALLPAPER (hidden). */
     private const val FLAG_IS_WALLPAPER = 1 shl 1
 }
+
+/** Undoes the pane for a child laid out at the root's origin, such as the wallpaper: it stays on the whole screen. */
+internal fun unscaledUnder(pane: TaskSurfaceCompat.SurfaceFrame) = TaskSurfaceCompat.SurfaceFrame(
+    1f / pane.scaleX, 1f / pane.scaleY, -pane.positionX / pane.scaleX, -pane.positionY / pane.scaleY,
+)
 
 /** The root's own transform: its children sit in display space from [offsetX],[offsetY]; the pane takes them. */
 internal fun rootFrame(pane: TaskSurfaceCompat.SurfaceFrame, offsetX: Int, offsetY: Int) = TaskSurfaceCompat.SurfaceFrame(
