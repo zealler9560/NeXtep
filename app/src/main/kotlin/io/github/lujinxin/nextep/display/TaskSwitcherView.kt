@@ -463,13 +463,14 @@ class TaskSwitcherView(
         // A coordinated exchange already animates a protected preview. The live
         // destination must match its final size when that preview is revealed.
         if (animated && !busy) {
+            // Fade only: the original also grew the surface from 0.96 scale, which
+            // read as a small-to-large shimmer when an app landed in a pane
+            // (user report 2026-10-28) — the fade alone settles it.
             textureView.alpha = 0f
-            textureView.scaleX = CONTENT_ENTER_SCALE
-            textureView.scaleY = CONTENT_ENTER_SCALE
+            textureView.scaleX = 1f
+            textureView.scaleY = 1f
             textureView.animate()
                 .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
                 .setDuration(TRANSITION_IN_DURATION_MS)
                 .setInterpolator(transitionInterpolator)
                 .start()
@@ -526,7 +527,7 @@ class TaskSwitcherView(
         const val COVER_REVEAL_DELAY_MS = 600L
         const val COVER_FALLBACK_MS = 2_500L
         const val COVER_FADE_MS = 200L
-        const val CONTENT_ENTER_SCALE = 0.96f
+
         const val CONTENT_EXIT_SCALE = 0.98f
     }
 
