@@ -139,28 +139,8 @@ object ColorOsLauncherHook {
                     })
                 }
             }
-            HookGuard.run("launcher_workspace_home_gesture_animation") {
-                // Gesture HOME uses OplusLauncherSwipeHandlerV2Impl, not liteAppCloseAnim.
-                // Its native light-animation branch disables the floating-icon spring while
-                // retaining the OEM gesture factory, completion callbacks and surface cleanup.
-                // The spring's icon coordinates assume an unscaled Launcher root.
-                val features = classLoader.loadClass("com.android.common.util.AppFeatureUtils")
-                val method = features.getDeclaredMethod("isHomeGestureLightAnimation")
-                check(method.returnType == Boolean::class.javaPrimitiveType) {
-                    "Unexpected ColorOS home-gesture animation signature"
-                }
-                method.isAccessible = true
-                module.hook(method).intercept(object : XposedInterface.Hooker {
-                    override fun intercept(chain: XposedInterface.Chain): Any? {
-                        if (!LauncherTransformController.isActive()) return chain.proceed()
-                        return true
-                    }
-                })
-                NeXtepLog.info(
-                    "launcher_workspace_home_gesture_animation",
-                    "Native light HOME gesture hook installed",
-                )
-            }
+            // Keep native gesture tracking: the global light-gesture flag also suppresses
+            // the drag into overview. HOME completion is scoped to its animation below.
             HookGuard.run("launcher_workspace_close_animation") {
                 // ColorOS already provides an icon-free animated return for special surfaces.
                 // Its icon spring assumes an unscaled Launcher and is invalid in our workspace.
