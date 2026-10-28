@@ -192,6 +192,26 @@ object ColorOsLauncherHook {
                 })
                 NeXtepLog.info("launcher_workspace_close_animation", "Installed light return on ${method.declaringClass.simpleName}.${method.name}")
             }
+            HookGuard.run("launcher_workspace_light_animation_duration") {
+                val method = classLoader.loadClass("com.android.launcher3.anim.light.AppLaunchAnimUtil")
+                    .declaredMethods.single {
+                        it.name == "getLightWindowAnimation" && it.parameterCount == 6 &&
+                            it.returnType == android.animation.ValueAnimator::class.java &&
+                            Context::class.java.isAssignableFrom(it.parameterTypes[2])
+                    }.apply { isAccessible = true }
+                module.hook(method).intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        val animator = chain.proceed() as? android.animation.ValueAnimator ?: return null
+                        val launcher = chain.args[2] as Context
+                        if (WorkspaceLauncherAnimationPolicy.applyNoAnimation(animator,
+                                LauncherTransformController.isActive(), SystemServerWorkspaceBridge.appAnimationsOff(launcher))) {
+                            NeXtepLog.info("launcher_workspace_close_animation", "Light app animation completes immediately with native cleanup")
+                        }
+                        return animator
+                    }
+                })
+                NeXtepLog.info("launcher_workspace_close_animation", "Installed native light-animation duration preference")
+            }
             HookGuard.run("launcher_close_async_diag") {
                 // Diagnostic: while ColorOS marks the close animation as running, taps may go to its
                 // interrupt path instead of the launcher window. Record when the flag changes and who asks.
