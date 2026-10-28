@@ -72,7 +72,14 @@ object ColorOsLauncherHook {
                         // app's icon by itself (seen on ColorOS 17: WeChat tapped, 富途 opened with no tap
                         // reaching the launcher). In the workspace only a launch the user tapped goes through.
                         if (!LauncherTransformController.tappedRecently()) {
-                            NeXtepLog.warn("launcher_redirect", "Refused launch without a tap component=${intent?.component}")
+                            val source = chain.args.getOrNull(0) as? View
+                            val caller = Throwable().stackTrace.asSequence()
+                                .filterNot { it.className.startsWith("io.github.lujinxin") || it.className.startsWith("io.github.libxposed") ||
+                                    it.className.startsWith("java.lang.reflect") || it.className.startsWith("LSPHooker") ||
+                                    it.className.startsWith("org.lsposed") }
+                                .take(14).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+                            NeXtepLog.warn("launcher_redirect", "Refused launch without a tap component=${intent?.component} " +
+                                "view=${source?.javaClass?.name} at=${source?.let { LauncherTransformController.screenBounds(it) }} by $caller")
                             return false
                         }
                         val args = chain.args.toTypedArray()
@@ -93,6 +100,30 @@ object ColorOsLauncherHook {
                 })
                 NeXtepLog.info("launcher_workspace_app_animation", "Installed static workspace launch source")
                 module.log(android.util.Log.INFO, "NeXtep", "Installed static workspace launch source")
+            }
+            HookGuard.run("launcher_item_click_log") {
+                // Diagnostics: who clicks an icon or folder in the workspace, and whether a finger did.
+                val handler = classLoader.loadClass("com.android.launcher3.touch.ItemClickHandler")
+                val methods = handler.declaredMethods.filter { it.name == "onClick" && it.parameterTypes.contentEquals(arrayOf(View::class.java)) }
+                check(methods.isNotEmpty()) { "No ItemClickHandler.onClick" }
+                methods.forEach { method ->
+                    method.isAccessible = true
+                    module.hook(method).intercept(object : XposedInterface.Hooker {
+                        override fun intercept(chain: XposedInterface.Chain): Any? {
+                            if (LauncherTransformController.isActive()) runCatching {
+                                val view = chain.args[0] as? View
+                                val caller = Throwable().stackTrace.asSequence()
+                                    .filterNot { it.className.startsWith("io.github.lujinxin") || it.className.startsWith("io.github.libxposed") ||
+                                        it.className.startsWith("java.lang.reflect") || it.className.startsWith("LSPHooker") ||
+                                        it.className.startsWith("org.lsposed") }
+                                    .take(12).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+                                NeXtepLog.info("launcher_item_click", "view=${view?.javaClass?.simpleName} tag=${view?.tag?.javaClass?.simpleName} " +
+                                    "at=${view?.let { LauncherTransformController.screenBounds(it) }} tapped=${LauncherTransformController.tappedRecently()} by $caller")
+                            }
+                            return chain.proceed()
+                        }
+                    })
+                }
             }
             HookGuard.run("launcher_recent_task_selection") {
                 val recents = classLoader.loadClass("com.android.quickstep.views.RecentsView")
