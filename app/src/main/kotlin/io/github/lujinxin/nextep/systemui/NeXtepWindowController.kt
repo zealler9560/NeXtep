@@ -1443,6 +1443,17 @@ class NeXtepWindowController(
         rosterSize = wanted
         viewport.setRosterSlotCount(wanted)
         NeXtepLog.info("scroll_column", "Roster size -> $wanted")
+        // The viewport-change path cannot apply this live: WorkspaceController.reconfigure()
+        // early-returns when the WorkspaceGeometry is unchanged, and the roster size lives in
+        // the layout profile, not the geometry — without this, a grown roster (and its scroll
+        // range) only takes effect on the next workbench entry. Re-lay the live panel out
+        // directly; the profile was already replaced synchronously by setRosterSlotCount.
+        val panel = sidebarView
+        if (panel != null && workspaceVisible) {
+            panel.post {
+                if (workspaceVisible) applySlotLayout(panel, geometry())
+            }
+        }
     }
 
     private fun pinCurrentLandscape(): Boolean {
