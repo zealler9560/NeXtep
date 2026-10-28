@@ -105,5 +105,5 @@
     <string name="section_open">開啟方式</string>
     <string name="section_privacy">隱私</string>
     <string name="section_support">遇到問題</string>
-    <string name="about_coolapk">%1$s · 酷安</string>
+    <string name="about_coolapk">关注我酷安：%1$s</string>
 </resources>

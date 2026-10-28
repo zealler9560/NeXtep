@@ -126,6 +126,10 @@ object LauncherTransformController {
 
     fun isActive(): Boolean = active
 
+    internal fun appAnimationsOff(): Boolean = active && decorReference.get()?.let {
+        SystemServerWorkspaceBridge.appAnimationsOff(it.context)
+    } == true
+
     fun mapToContent(event: MotionEvent?): TouchCoordinateMapper.Transform? {
         recordTouch(event)
         val transform = if (active) appliedTransform else null

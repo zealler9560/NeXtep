@@ -190,6 +190,31 @@ object ColorOsLauncherHook {
                 })
                 NeXtepLog.info("launcher_workspace_close_animation", "Installed light return on ${method.declaringClass.simpleName}.${method.name}")
             }
+            HookGuard.run("launcher_finish_close_animation") {
+                val animation = classLoader.loadClass("com.android.launcher3.anim.engine.core.LauncherAnimation")
+                val type = animation.getMethod("getAnimationType")
+                module.hook(animation.getMethod("start")).intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        val result = chain.proceed()
+                        val current = chain.thisObject ?: return result
+                        runCatching {
+                            val name = (type.invoke(current) as? Enum<*>)?.name
+                            if (WorkspaceLauncherAnimationPolicy.shouldFinishClose(
+                                    LauncherTransformController.isActive(), LauncherTransformController.appAnimationsOff(), name)) {
+                                // Let the native start finish wiring its listeners before committing its final frame.
+                                android.os.Handler(android.os.Looper.myLooper() ?: android.os.Looper.getMainLooper()).post {
+                                    if (LauncherTransformController.appAnimationsOff()) runCatching {
+                                        WorkspaceLauncherAnimationPolicy.finishClose(current)
+                                        NeXtepLog.info("launcher_finish_close", "Finished native close type=$name")
+                                    }.onFailure { NeXtepLog.warn("launcher_finish_close", "Native close finish unavailable", it) }
+                                }
+                            }
+                        }.onFailure { NeXtepLog.warn("launcher_finish_close", "Native close type unavailable", it) }
+                        return result
+                    }
+                })
+                NeXtepLog.info("launcher_finish_close", "Installed native close completion hook")
+            }
             HookGuard.run("launcher_proxy_touch") {
                 val method = classLoader.loadClass("com.android.launcher3.views.BaseDragLayer")
                     .declaredMethods.filter {
