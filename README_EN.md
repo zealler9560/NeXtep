@@ -66,7 +66,9 @@ Put apps in the main pane and the small panes, then tap the add button at the fa
 
 ### Price comparison
 
-One of the two default scenes. Type a product once and it is searched in several delivery or shopping apps at the same time, each in its own pane, so the results sit side by side: delivery searches JD Miaosong, Taobao Shangou and Meituan Waimai; shopping searches Pinduoduo, Douyin Mall, JD and Taobao. Panes only opens the search results; it does not read prices, place orders or pay.
+One of the two default scenes. Type a product once and it is searched in several delivery or shopping apps at the same time, each in its own pane, so the results sit side by side: delivery searches JD Food Delivery, Taobao Shangou and Meituan Waimai; shopping searches Pinduoduo, Douyin Mall, JD and Taobao. Meituan uses the main app when installed, with the standalone delivery app as a fallback. Panes only opens the search results; it does not read prices, place orders or pay.
+
+Apps opened together for comparison stay live until all protected small panes show content and their pictures settle, then follow the Pause apps settings. Blank, unrecognized or continuously changing result pages stay live to avoid freezing before results load.
 
 <p align="center">
   <img src="assets/readme/compare.gif" alt="The price comparison panel: pick a group and type a product" width="300">
@@ -99,7 +101,7 @@ The workspace follows the system's light and dark mode, or stays light or dark. 
 ## Requirements
 
 - ColorOS 16 and 17: tested on OPPO, OnePlus and realme phones.
-- Xiaomi HyperOS: fully supported, tested on Xiaomi phones.
+- Xiaomi HyperOS: compatibility support is included; status-bar, notification pull-down and app-specific touch issues remain under investigation on some devices.
 - Other ROMs need their own adaptation and are untested.
 - Root (KernelSU or similar), Zygisk and LSPosed with the modern libxposed API.
 - The module changes SystemUI, launcher and system_server behaviour. Keep a recovery path for the device.
