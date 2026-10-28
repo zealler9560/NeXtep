@@ -1,6 +1,7 @@
 package io.github.lujinxin.nextep.systemui
 
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowManager
 import io.github.lujinxin.nextep.logging.NeXtepLog
@@ -42,21 +43,45 @@ internal object WorkspaceStatusBarCompat {
     }
 
     /** Only system bar/panel geometry, never view text or notification contents. */
-    fun diagnostics(): String = runCatching {
+    fun diagnostics(details: Boolean = false): String = runCatching {
         val globalClass = Class.forName("android.view.WindowManagerGlobal")
         val global = globalClass.getDeclaredMethod("getInstance").invoke(null)
         val views = globalClass.getDeclaredField("mViews").apply { isAccessible = true }.get(global) as List<*>
-        views.filterIsInstance<View>().mapNotNull { view ->
+        views.toList().filterIsInstance<View>().mapNotNull { view ->
             val params = view.layoutParams as? WindowManager.LayoutParams ?: return@mapNotNull null
             if (params.type != WindowManager.LayoutParams.TYPE_STATUS_BAR &&
-                params.title?.toString() != "NeXtepTopBar") return@mapNotNull null
+                params.type != 2040 && params.title?.toString() !in setOf("NeXtepTopBar", "NotificationShade", "ControlCenter")) return@mapNotNull null
             val position = IntArray(2).also(view::getLocationOnScreen)
             val insets = view.rootWindowInsets
-            "type=${params.type} size=${view.width}x${view.height} xy=${position.joinToString(",")} " +
+            "type=${params.type} class=${view.javaClass.name} size=${view.width}x${view.height} xy=${position.joinToString(",")} " +
                 "visible=${view.visibility} alpha=${view.alpha}/${params.alpha} " +
                 "statusVisible=${insets?.isVisible(WindowInsets.Type.statusBars())} " +
                 "statusTop=${insets?.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars())?.top} " +
-                "forced=${shownTypesField?.getInt(params)}"
+                "forced=${shownTypesField?.getInt(params)} flags=${params.flags} private=${params.privateFlagsCompat()} " +
+                "requestedSize=${params.width},${params.height} requestedXY=${params.x},${params.y}" +
+                if (details && params.type == WindowManager.LayoutParams.TYPE_STATUS_BAR) "\n${viewGeometry(view)}" else ""
         }.joinToString("\n").ifEmpty { "no status bar/panel roots" }
     }.getOrElse { "status bar diagnostics unavailable: ${it.javaClass.simpleName}" }
+
+    private fun WindowManager.LayoutParams.privateFlagsCompat(): Int? = runCatching {
+        javaClass.getField("privateFlags").getInt(this)
+    }.getOrNull()
+
+    /** Bounded geometry only: never read text, descriptions or notification data. */
+    internal fun viewGeometry(root: View): String {
+        val lines = mutableListOf<String>()
+        fun visit(view: View, depth: Int) {
+            if (lines.size >= 48 || depth > 5) return
+            val at = IntArray(2).also(view::getLocationOnScreen)
+            val rect = android.graphics.Rect()
+            val globallyVisible = view.getGlobalVisibleRect(rect)
+            lines += "depth=$depth class=${view.javaClass.name} id=${view.id} visible=${view.visibility} shown=${view.isShown} " +
+                "alpha=${view.alpha} xy=${at.joinToString(",")} size=${view.width},${view.height} " +
+                "translation=${view.translationX},${view.translationY} scale=${view.scaleX},${view.scaleY} " +
+                "global=$globallyVisible rect=$rect"
+            if (view is ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i), depth + 1)
+        }
+        visit(root, 0)
+        return lines.joinToString("\n")
+    }
 }

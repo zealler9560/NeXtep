@@ -15,6 +15,8 @@ internal object InputDispatchSnapshot {
 
     private fun identity(name: String): String = "w=${name.hashCode().toUInt().toString(16)}" +
         (packageName.find(name)?.value?.let { " pkg=$it" } ?: "") +
+        (name.substringAfter(' ', name).takeIf { it in setOf("StatusBar", "NotificationShade", "ControlCenter",
+            "NeXtepTopBar", "NeXtepSidebar", "NeXtepContentPanel") }?.let { " role=$it" } ?: "") +
         (name.takeIf { it in setOf("[Gesture Monitor] NeXtep-bottom-corners", "[Gesture Monitor] NeXtep-wide-back",
             "[Gesture Monitor] OplusExInputReceiver1", "[Gesture Monitor] swipe-up", "[Gesture Monitor] edge-swipe") }
             ?.let { " monitor=${it.substringAfter("] ")}" } ?: "")

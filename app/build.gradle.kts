@@ -19,8 +19,8 @@ android {
         versionName = "3.0.3"
         val touchDiagnostics = providers.gradleProperty("panesTouchDiagnostics").orNull == "true"
         buildConfigField("boolean", "TOUCH_DIAGNOSTICS", touchDiagnostics.toString())
-        buildConfigField("String", "DIAGNOSTIC_BUILD", "\"${if (touchDiagnostics) "20261028-touch2" else "standard"}\"")
-        if (touchDiagnostics) versionNameSuffix = "-touch2"
+        buildConfigField("String", "DIAGNOSTIC_BUILD", "\"${if (touchDiagnostics) "20261028-bars1" else "standard"}\"")
+        if (touchDiagnostics) versionNameSuffix = "-bars1"
 
     }
 

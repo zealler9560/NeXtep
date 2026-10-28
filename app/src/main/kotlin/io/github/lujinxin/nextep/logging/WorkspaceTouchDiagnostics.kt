@@ -42,6 +42,9 @@ internal object WorkspaceTouchDiagnostics {
             firstY = event.rawY
             add("down t=$stream monitorDisplay=0 raw=$firstX,$firstY pointers=${event.pointerCount} " +
                 TaskSurfaceCompat.touchDiagnostics(firstX, firstY))
+            if (firstY <= context.resources.displayMetrics.density * 48 && event.eventTime - lastSample >= 2_000) {
+                add("bars at down=$stream\n" + io.github.lujinxin.nextep.systemui.WorkspaceStatusBarCompat.diagnostics(details = true))
+            }
         }
         if (stream != event.downTime) return
         if (event.actionMasked == MotionEvent.ACTION_MOVE) moves++

@@ -13,6 +13,32 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35, 36, 37])
 class WorkspaceStatusBarCompatTest {
+    @Test fun capturedBarChildrenExposeHiddenGeometryWithoutReadingText() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val root = android.widget.FrameLayout(context)
+        val child = android.widget.TextView(context).apply {
+            text = "private notification"
+            contentDescription = "private sender"
+            alpha = 0f
+            translationY = 94f
+        }
+        root.addView(child)
+        root.layout(0, 0, 1080, 94)
+        child.layout(0, 0, 200, 94)
+        val result = WorkspaceStatusBarCompat.viewGeometry(root)
+        assertTrue(result.contains("android.widget.TextView"))
+        assertTrue(result.contains("alpha=0.0"))
+        assertTrue(result.contains("translation=0.0,94.0"))
+        assertFalse(result.contains("private"))
+    }
+
+    @Test fun geometryTraversalIsBounded() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val root = android.widget.FrameLayout(context)
+        repeat(100) { root.addView(android.view.View(context)) }
+        assertEquals(48, WorkspaceStatusBarCompat.viewGeometry(root).lines().size)
+    }
+
     @Test fun hyperOsCropsTheWholeBarWhileColorOsKeepsItsExistingGap() {
         assertEquals(0, WorkspaceStatusBarCompat.keptGap(2.75f, true))
         assertEquals(44, WorkspaceStatusBarCompat.keptGap(2.75f, false))

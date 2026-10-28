@@ -48,6 +48,16 @@ class InputDispatchSnapshotTest {
         assertTrue(InputDispatchSnapshot.sanitize("Permission Denial").contains("unavailable"))
     }
 
+    @Test fun identifiesOnlyKnownSystemBarRolesWithoutExposingArbitraryTitles() {
+        val result = InputDispatchSnapshot.sanitize("Input Dispatcher State:\n" +
+            "  0: name=abc StatusBar, id=7, displayId=0\n" +
+            "  1: name=def NotificationShade, id=8, displayId=0\n" +
+            "  2: name=aaa private message, id=9, displayId=0")
+        assertTrue(result.contains("role=StatusBar"))
+        assertTrue(result.contains("role=NotificationShade"))
+        assertFalse(result.contains("private message"))
+    }
+
     @Test fun boundsOutputAndOmitsDuplicatedOemSection() {
         assertEquals(InputDispatchSnapshot.sanitize(dump), InputDispatchSnapshot.sanitize("$dump\n$dump"))
         val huge = "Input Dispatcher State:\n" + (1..1000).joinToString("\n") { "Display: $it" }
