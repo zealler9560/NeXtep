@@ -1233,7 +1233,7 @@ class NeXtepWindowController(
     /**
      * Positions the rail cards for the column's scroll offset: every card keeps its laid-out
      * position and is translated up by [offsetPx]; cards fully out of the rail's window are
-     * hidden and reported off-screen, so the coordinator can pause their apps.
+     * reported off-screen, so the coordinator can pause their apps behind a captured cover.
      */
     private fun applyScrollOffset(offsetPx: Int) {
         val panel = sidebarView ?: return
@@ -1252,7 +1252,12 @@ class NeXtepWindowController(
             slot.view.translationY = -offsetPx.toFloat()
             val top = bound.top - offsetPx
             val fullyOutside = top + bound.height <= 0 || top >= windowHeight
-            slot.view.visibility = if (fullyOutside) View.INVISIBLE else View.VISIBLE
+            // Deliberately no visibility toggle for fully-out cards: INVISIBLE destroys
+            // the card's SurfaceView surface, so a card scrolling back showed black until
+            // its app redrew — and the pause cover capture, which reads the task's output,
+            // came back empty for the same reason (user report 2026-10-28, log: cover=null).
+            // Translated out of the rail window, the window's own layer clips the card;
+            // the surface keeps its last frame, and the pause cover can be captured.
             slotCoordinator?.setSlotOffscreen(index, fullyOutside)
         }
     }
