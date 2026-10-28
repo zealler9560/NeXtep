@@ -13,10 +13,12 @@ data class WorkspaceLayoutProfile(
     val wideAspect: Double = DEFAULT_WIDE_ASPECT,
     /** The measured status bar height less the kept gap; not recorded, a record is checked against it on reading. */
     val statusBar: Int = 0,
+    /** Blank part retained inside panes; HyperOS uses zero so icons cannot leak into a card. */
+    val statusBarGap: Int = (WorkspaceControlMetrics.STATUS_KEEP_DP * densityDpi / 160f).toInt(),
 ) {
     /** The whole status bar: the inset a pane's display provides so apps lay out as on the phone's. */
     val statusBarHeight: Int get() = if (statusBar == 0) 0 else
-        statusBar + (WorkspaceControlMetrics.STATUS_KEEP_DP * densityDpi / 160f).toInt()
+        statusBar + statusBarGap
 
     data class Slot(val width: Int, val height: Int, val top: Int)
     data class Source(val left: Int, val top: Int, val right: Int, val bottom: Int) {
@@ -27,6 +29,7 @@ data class WorkspaceLayoutProfile(
 
     init {
         require(densityDpi > 0 && gapPixels > 0)
+        require(statusBarGap >= 0)
         require(geometry.sidebarWidth > gapPixels)
         require(wideSlotIndex == null || wideSlotIndex in 0 until WORKSPACE_SLOT_COUNT)
         require(wideAspect in MIN_WIDE_ASPECT..MAX_WIDE_ASPECT)
@@ -85,18 +88,18 @@ data class WorkspaceLayoutProfile(
     fun withControlAtBottom(bottom: Boolean): WorkspaceLayoutProfile {
         if (bottom == geometry.controlAtBottom) return this
         return create(geometry.screenWidth, geometry.screenHeight, densityDpi, geometry.navigationInsets,
-            geometry.displayRotation, bottom, statusBar).withWideSlot(wideSlotIndex, wideAspect)
+            geometry.displayRotation, bottom, statusBar, statusBarGap).withWideSlot(wideSlotIndex, wideAspect)
     }
 
     fun withWideSlot(index: Int?, aspect: Double = DEFAULT_WIDE_ASPECT): WorkspaceLayoutProfile {
         if (index == null && wideSlotIndex == null) return this
         val normal = create(geometry.screenWidth, geometry.screenHeight, densityDpi,
-            geometry.navigationInsets, geometry.displayRotation, geometry.controlAtBottom, statusBar)
+            geometry.navigationInsets, geometry.displayRotation, geometry.controlAtBottom, statusBar, statusBarGap)
         if (index == null) return normal
         // A picture at the top keeps the status strip inside the control strip (wideStatus), and the
         // main app lays out at its own canvas there: nothing is cropped.
         val base = if (geometry.controlAtBottom) normal else create(geometry.screenWidth, geometry.screenHeight,
-            densityDpi, geometry.navigationInsets, geometry.displayRotation).copy(statusBar = statusBar)
+            densityDpi, geometry.navigationInsets, geometry.displayRotation).copy(statusBar = statusBar, statusBarGap = statusBarGap)
         val clamped = aspect.coerceIn(MIN_WIDE_ASPECT, MAX_WIDE_ASPECT)
         val g = base.geometry
         val short = minOf(g.availableWidth, g.availableHeight)
@@ -175,15 +178,16 @@ data class WorkspaceLayoutProfile(
         const val MAX_WIDE_ASPECT = 2.4
 
         fun create(width: Int, height: Int, densityDpi: Int, insets: WorkspaceNavigationInsets,
-            displayRotation: Int = 0, controlAtBottom: Boolean = false, statusBar: Int = 0) =
+            displayRotation: Int = 0, controlAtBottom: Boolean = false, statusBar: Int = 0,
+            statusBarGap: Int = (WorkspaceControlMetrics.STATUS_KEEP_DP * densityDpi / 160f).toInt()) =
             WorkspaceLayoutProfile(WorkspaceGeometry.forDisplay(width, height, density = densityDpi / 160f,
                 navigationInsets = insets, displayRotation = displayRotation, controlAtBottom = controlAtBottom,
                 statusInset = statusBar),
                 densityDpi, (WorkspaceControlMetrics.RAIL_GAP_DP * densityDpi / 160f).toInt().coerceAtLeast(1),
-                statusBar = statusBar)
+                statusBar = statusBar, statusBarGap = statusBarGap)
 
         /** [statusBar] is today's measured height: a record solved for another one (or none) is rejected. */
-        fun decode(encoded: String?, statusBar: Int = 0): WorkspaceLayoutProfile? = runCatching {
+        fun decode(encoded: String?, statusBar: Int = 0, statusBarGap: Int? = null): WorkspaceLayoutProfile? = runCatching {
             val p = encoded?.split(',') ?: return@runCatching null
             val wide = p.firstOrNull() == WIDE_VERSION
             if (!wide && p.firstOrNull() != NORMAL_VERSION ||
@@ -197,7 +201,8 @@ data class WorkspaceLayoutProfile(
                 statusInset = if (portrait && !wide) statusBar else 0)
             // The main canvas is not recorded: it follows from the rail, and the cards are solved on it.
             val profile = WorkspaceLayoutProfile(if (wide && portrait) geometry.copy(mainCanvasHeight = wideMainCanvasHeight(geometry)) else geometry,
-                p[5].toInt(), p[6].toInt(), if (wide) p.last().toInt() else null, statusBar = statusBar)
+                p[5].toInt(), p[6].toInt(), if (wide) p.last().toInt() else null, statusBar = statusBar,
+                statusBarGap = statusBarGap ?: (WorkspaceControlMetrics.STATUS_KEEP_DP * p[5].toInt() / 160f).toInt())
             if (profile.encode() != encoded) return@runCatching null
             profile
         }.getOrNull()

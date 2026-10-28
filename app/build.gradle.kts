@@ -49,3 +49,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
 }
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    // Robolectric's Android 16+ shared-memory setup uses the JDK file-descriptor accessor.
+    jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+}

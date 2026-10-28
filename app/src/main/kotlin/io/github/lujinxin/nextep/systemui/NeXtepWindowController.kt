@@ -416,6 +416,7 @@ class NeXtepWindowController(
             val params = record.view.layoutParams as WindowManager.LayoutParams
             params.flags = (params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) and
                 WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER.inv()
+            WorkspaceStatusBarCompat.configure(params, active = false)
             windowManager.updateViewLayout(record.view, params)
         }
     }
@@ -568,6 +569,7 @@ class NeXtepWindowController(
             view.animate().cancel()
             val params = view.layoutParams as WindowManager.LayoutParams
             params.flags = params.flags and WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER.inv()
+            WorkspaceStatusBarCompat.configure(params, active = false)
             windowManager.updateViewLayout(view, params)
             val slideOut = record.title == "NeXtepSidebar"
             val (dx, dy) = if (slideOut) sidebarEdgeOffset(exitGeometry) else 0f to 0f
@@ -599,6 +601,7 @@ class NeXtepWindowController(
         view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         val params = view.layoutParams as? WindowManager.LayoutParams ?: return
         params.alpha = 0f
+        WorkspaceStatusBarCompat.configure(params, active = false)
         params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         runCatching { windowManager.updateViewLayout(view, params) }
             .onFailure { NeXtepLog.warn("workspace", "Could not park ${record.title}", it) }
@@ -850,6 +853,7 @@ class NeXtepWindowController(
         params.flags = if (touchable) params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
         else params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         params.alpha = if (workspaceVisible) 1f else 0f
+        WorkspaceStatusBarCompat.configure(params, active = workspaceVisible && !suspended)
         // A foreground app normally hides live wallpaper, so screenshotWallpaper()
         // has no surface to read on entry. Keep that surface available behind the
         // workspace until exit/lock, without sending control gestures to it.

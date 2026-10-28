@@ -493,6 +493,7 @@ internal class WorkbenchToolsController(
                 it.write("Panes=${panes?.versionName} (${panes?.longVersionCode}) installed=${panes?.lastUpdateTime?.let(::time)} " +
                     "boot=${time(boot)}\ndevice=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} rom=${android.os.Build.DISPLAY}\n")
                 it.write(runCatching { environment() }.getOrElse { "environment failed $it\n" })
+                it.write("--- status bar\n${WorkspaceStatusBarCompat.diagnostics()}\n--- events\n")
                 it.write(NeXtepLog.diagnostics())
                 it.write("\n--- launcher\n${launcher ?: "no answer"}\n")
                 it.write("\n--- system_server\n${NeXtepLog.mirrored(context, NeXtepLog.SYSTEM_SERVER_EVENTS_KEY) ?: "no events"}\n")

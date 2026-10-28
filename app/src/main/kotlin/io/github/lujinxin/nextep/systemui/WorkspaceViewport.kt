@@ -63,6 +63,7 @@ internal class WorkspaceViewport(
     private var wideAspect = WorkspaceLayoutProfile.DEFAULT_WIDE_ASPECT
     private var controlAtBottom = false
     private var statusBar = 0
+    private var statusBarGap = 0
     private val notifyChanged = Runnable { onChanged() }
     private val displayManager = context.getSystemService(DisplayManager::class.java)
 
@@ -147,11 +148,12 @@ internal class WorkspaceViewport(
             "${metrics.densityDpi}:$rotation"
         if (cachedKey == key && cached != null) return
         val encoded = runCatching { preferences?.getString(key, null) }.getOrNull()
-        // The main app keeps the bottom of its status band as a gap below the strip; only the rest is cropped.
-        statusBar = (measureStatusBar(metrics.density) -
-            (WorkspaceControlMetrics.STATUS_KEEP_DP * metrics.density).roundToInt()).coerceAtLeast(0)
+        // ColorOS keeps a blank gap; on HyperOS that same band can contain status icons.
+        statusBar = (measureStatusBar(metrics.density) - WorkspaceStatusBarCompat.keptGap(metrics.density)).coerceAtLeast(0)
+        statusBarGap = if (WorkspaceStatusBarCompat.isHyperOs) 0 else
+            (WorkspaceControlMetrics.STATUS_KEEP_DP * metrics.density).toInt()
         // A record solved without this status band fails decode's re-encode check and is measured again.
-        val savedProfile = WorkspaceLayoutProfile.decode(encoded, statusBar)?.takeIf {
+        val savedProfile = WorkspaceLayoutProfile.decode(encoded, statusBar, statusBarGap)?.takeIf {
             it.wideSlotIndex == null && (buttons || it.geometry.navigationInsets == WorkspaceNavigationInsets())
         }?.let { it.copy(geometry = it.geometry.copy(displayRotation = rotation)) }
         if (savedProfile != null) {
@@ -196,7 +198,7 @@ internal class WorkspaceViewport(
         if (cached != snapshot || profile == null) {
             baseProfile = saved ?: WorkspaceLayoutProfile.create(snapshot.width, snapshot.height,
                 (snapshot.density * 160).roundToInt(), snapshot.navigationInsets, snapshot.displayRotation,
-                statusBar = statusBar)
+                statusBar = statusBar, statusBarGap = statusBarGap)
             profile = checkNotNull(baseProfile).withWideSlot(wideSlotIndex, wideAspect).withControlAtBottom(controlAtBottom)
             SystemServerWorkspaceBridge.publishLayout(context, checkNotNull(profile))
         }

@@ -476,7 +476,8 @@ object TaskSurfaceCompat {
         NeXtepLog.info(
             "task_surface",
             "Presented taskId=$taskId scale=$scaleX,$scaleY " +
-                "position=${geometry.contentLeft},${geometry.contentTop} from=$source",
+                "position=${geometry.contentLeft},${geometry.contentTop} " +
+                "surface=${geometry.mainTranslationX},${geometry.mainTranslationY} crop=$crop from=$source",
         )
     }.onFailure { error ->
         NeXtepLog.error("task_surface", "Presentation failed taskId=$taskId", error)
