@@ -56,9 +56,9 @@ internal enum class WorkbenchAppearance(
         const val PAUSE_BADGE_INSET_DP = 5
     }
 
-    fun background(radius: Float = 0f, stroke: Int = 0) = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(panel, panelEnd),
-    ).apply {
+    // Each panel meets the same wallpaper; restarting a gradient exposes rectangular backplates.
+    fun background(radius: Float = 0f, stroke: Int = 0) = GradientDrawable().apply {
+        setColor(panelEnd)
         cornerRadius = radius
         if (stroke > 0) setStroke(stroke, outline)
     }

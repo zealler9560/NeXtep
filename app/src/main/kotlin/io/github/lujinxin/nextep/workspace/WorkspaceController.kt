@@ -161,6 +161,7 @@ class WorkspaceController(
             state = WorkspaceState.Active(geometry)
             SystemDialogLayoutController.setGeometry(geometry)
             NeXtepLog.info("workspace", "Entered geometry=$geometry")
+            openFirstEntryProfile()
             true
         } catch (error: Throwable) {
             SystemServerWorkspaceBridge.publish(applicationContext, false)
@@ -174,6 +175,28 @@ class WorkspaceController(
             NeXtepLog.error("workspace", "Enter failed open", error)
             false
         }
+    }
+
+    private fun openFirstEntryProfile() {
+        val enteredState = state
+        Thread({
+            runCatching {
+                applicationContext.contentResolver.call(
+                    android.net.Uri.parse("content://io.github.yishisanren.panes.workspace.config"),
+                    "claim_coolapk_intro", null, null,
+                )?.getBoolean("open") == true
+            }.onSuccess { open ->
+                if (open) android.os.Handler(Looper.getMainLooper()).post {
+                    val launch = {
+                        if (state === enteredState) {
+                            val opened = io.github.lujinxin.nextep.config.CoolapkProfile.open(applicationContext)
+                            NeXtepLog.info("coolapk_intro", "First workspace entry profile opened=$opened")
+                        }
+                    }
+                    if (!io.github.lujinxin.nextep.systemui.ShellTransitionLog.runOnIdle(launch)) launch()
+                }
+            }.onFailure { NeXtepLog.warn("coolapk_intro", "Unable to claim first entry", it) }
+        }, "NeXtep-FirstEntry").start()
     }
 
     private fun exit(): Boolean {

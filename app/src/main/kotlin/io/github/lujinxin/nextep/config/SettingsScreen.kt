@@ -173,6 +173,16 @@ object SettingsScreen {
             addView(UpdateSection.create(activity), matchWidth())
             addView(sectionDescription(activity, activity.getString(R.string.about_based_on)), matchWidth())
             addView(MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = activity.getString(R.string.about_coolapk, CoolapkProfile.NICKNAME)
+                minHeight = dp(activity, 48)
+                contentDescription = "$text · ${CoolapkProfile.URL}"
+                setOnClickListener {
+                    if (!CoolapkProfile.open(activity)) {
+                        Toast.makeText(activity, activity.getString(R.string.browser_unavailable), Toast.LENGTH_LONG).show()
+                    }
+                }
+            }, matchWidth().apply { topMargin = dp(activity, 12) })
+            addView(MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
                 text = activity.getString(R.string.about_qq_group)
                 minHeight = dp(activity, 48)
                 insetTop = dp(activity, 4)

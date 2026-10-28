@@ -20,6 +20,9 @@ class WorkspaceConfigProvider : ContentProvider() {
         ) throw SecurityException("Workspace settings are restricted to SystemUI")
         return when (method) {
             "query" -> WorkspaceConfigReceiver.readConfig(owner)
+            "claim_coolapk_intro" -> Bundle().apply {
+                putBoolean("open", CoolapkProfile.claimFirstEntry(owner))
+            }
             else -> null
         }
     }
