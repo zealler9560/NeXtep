@@ -59,6 +59,8 @@ object SystemUiRuntime {
                 return@execute
             }
             workspaceConfig = queriedConfig
+            io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge.publishAppAnimationsOff(
+                applicationContext, queriedConfig.appAnimationsOff)
             AppLanguage.updateHostLanguage(queriedConfig.languageTag)
             workspaceConfigReady = true
             lifecycleHandler.post {
@@ -72,6 +74,7 @@ object SystemUiRuntime {
                 "Applied statusBarGesture=${workspaceConfig.statusBarGestureEnabled} " +
                     "slotBackgroundSwipe=${workspaceConfig.slotBackgroundSwipeEnabled} " +
                     "autoMinimizeMain=${workspaceConfig.autoMinimizeMainOnTopAppSwitch} " +
+                    "appAnimationsOff=${workspaceConfig.appAnimationsOff} " +
                     "navigationButtons=${workspaceConfig.navigationButtonsEnabled}",
             )
         }
@@ -80,6 +83,8 @@ object SystemUiRuntime {
     fun isStatusBarGestureEnabled(): Boolean = workspaceConfigReady && workspaceConfig.statusBarGestureEnabled
 
     fun shouldAutoMinimizeMainOnTopAppSwitch(): Boolean = workspaceConfig.autoMinimizeMainOnTopAppSwitch
+
+    fun appAnimationsOff(): Boolean = workspaceConfig.appAnimationsOff
     private val lockStateObserver = object : Runnable {
         override fun run() {
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return

@@ -83,6 +83,14 @@ object SettingsScreen {
                         settings.autoMinimizeMainOnTopAppSwitch,
                         repository::setAutoMinimizeMainOnTopAppSwitch,
                     ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
+                        activity.getString(R.string.app_animations_off_title),
+                        activity.getString(R.string.app_animations_off_summary),
+                        settings.appAnimationsOff,
+                        repository::setAppAnimationsOff,
+                    ), matchWidth())
                 }, matchWidth())
             }, card())
 

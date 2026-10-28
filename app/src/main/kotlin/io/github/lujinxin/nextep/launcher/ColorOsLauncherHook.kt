@@ -91,7 +91,7 @@ object ColorOsLauncherHook {
                             // Launcher3's own bounds take in the label below the icon; the icon's square is the source.
                             intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
                             iconBitmap(icon)?.let { intent?.putExtra(TriggerBroadcastContract.EXTRA_ICON_BITMAP, it) }
-                            liftIcon(icon)
+                            if (!SystemServerWorkspaceBridge.appAnimationsOff(icon.context)) liftIcon(icon)
                         } else NeXtepLog.info("launcher_redirect", "No icon source: view=${view?.javaClass?.name} " +
                             "size=${view?.width}x${view?.height} attached=${view?.isAttachedToWindow} bounds=${intent?.sourceBounds}")
                         args[0] = null

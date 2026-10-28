@@ -954,7 +954,7 @@ class NeXtepWindowController(
      * pane looked like a paint swatch, not a window opening.
      */
     private fun flyIcon(component: android.content.ComponentName, source: android.graphics.Rect, desktopIcon: android.graphics.Bitmap?) {
-        if (source.isEmpty) return
+        if (source.isEmpty || SystemUiRuntime.appAnimationsOff()) return
         val icon = desktopIcon?.let { android.graphics.drawable.BitmapDrawable(context.resources, it) }
             ?: runCatching { context.packageManager.getActivityIcon(component) }
                 .recoverCatching { context.packageManager.getApplicationIcon(component.packageName) }

@@ -28,6 +28,8 @@ data class WorkspaceTopConfig(
     val statusBarGestureEnabled: Boolean = true,
     val slotBackgroundSwipeEnabled: Boolean = true,
     val autoMinimizeMainOnTopAppSwitch: Boolean = true,
+    /** In the workbench, apps open and close in the main window without animation. */
+    val appAnimationsOff: Boolean = true,
     val navigationButtonsEnabled: Boolean = false,
     val languageTag: String = "",
 )
@@ -48,6 +50,7 @@ object WorkspaceConfigContract {
     const val EXTRA_STATUS_BAR_GESTURE_ENABLED = "io.github.yishisanren.panes.extra.STATUS_BAR_GESTURE_ENABLED"
     const val EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED = "io.github.yishisanren.panes.extra.SLOT_BACKGROUND_SWIPE_ENABLED"
     const val EXTRA_AUTO_MINIMIZE_MAIN = "io.github.yishisanren.panes.extra.AUTO_MINIMIZE_MAIN_ON_TOP_APP_SWITCH"
+    const val EXTRA_APP_ANIMATIONS_OFF = "io.github.yishisanren.panes.extra.APP_ANIMATIONS_OFF"
     const val EXTRA_NAVIGATION_BUTTONS_ENABLED = "io.github.yishisanren.panes.extra.NAVIGATION_BUTTONS_ENABLED"
     const val EXTRA_LANGUAGE_TAG = "io.github.yishisanren.panes.extra.LANGUAGE_TAG"
     const val RESULT_CONFIG = 35_001
@@ -83,6 +86,7 @@ class WorkspaceConfigReceiver : BroadcastReceiver() {
                 putBoolean(WorkspaceConfigContract.EXTRA_STATUS_BAR_GESTURE_ENABLED, settings.statusBarGestureEnabled)
                 putBoolean(WorkspaceConfigContract.EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED, settings.slotBackgroundSwipeEnabled)
                 putBoolean(WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, settings.autoMinimizeMainOnTopAppSwitch)
+                putBoolean(WorkspaceConfigContract.EXTRA_APP_ANIMATIONS_OFF, settings.appAnimationsOff)
                 putBoolean(WorkspaceConfigContract.EXTRA_NAVIGATION_BUTTONS_ENABLED, settings.navigationButtonsEnabled)
                 putString(WorkspaceConfigContract.EXTRA_LANGUAGE_TAG, AppLanguage.selectedTag(context))
                 putStringArrayList(
@@ -219,6 +223,7 @@ object WorkspaceConfigClient {
             autoMinimizeMainOnTopAppSwitch = extras?.getBoolean(
                 WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, true,
             ) ?: true,
+            appAnimationsOff = extras?.getBoolean(WorkspaceConfigContract.EXTRA_APP_ANIMATIONS_OFF, true) ?: true,
             navigationButtonsEnabled = extras?.getBoolean(
                 WorkspaceConfigContract.EXTRA_NAVIGATION_BUTTONS_ENABLED, false,
             ) ?: false,

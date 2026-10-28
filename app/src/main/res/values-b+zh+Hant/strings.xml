@@ -18,6 +18,8 @@
     <string name="gesture_summary">從左下角向右上、或右下角向左上斜滑，開啟或關閉工作區。</string>
     <string name="auto_minimize_title">開啟新應用程式時縮小原應用程式</string>
     <string name="auto_minimize_summary">從頂列、通知、控制中心等任何地方開啟應用程式時，原大視窗應用程式移入空的小視窗；沒有空位時退到背景。</string>
+    <string name="app_animations_off_title">關閉應用程式開啟和關閉動畫</string>
+    <string name="app_animations_off_summary">工作台中，從桌面開啟應用程式、關閉應用程式回到桌面時不播放動畫，直接切換。</string>
     <string name="font_value">字型：%1$s</string>
     <string name="font_bold">粗體</string>
     <string name="font_size_value">字級：%1$d sp</string>
