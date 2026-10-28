@@ -68,9 +68,7 @@ object ColorOsLauncherHook {
                         val intent = chain.args.getOrNull(1) as? Intent
                         if (!WorkspaceLauncherAnimationPolicy.useStaticSource(
                                 LauncherTransformController.isActive(), intent)) return chain.proceed()
-                        // ColorOS swallows taps during its return animation and then starts the previous
-                        // app's icon by itself (seen on ColorOS 17: WeChat tapped, 富途 opened with no tap
-                        // reaching the launcher). In the workspace only a launch the user tapped goes through.
+                        // Accept touches from both the Activity and the return gesture's proxy.
                         if (!LauncherTransformController.tappedRecently()) {
                             val source = chain.args.getOrNull(0) as? View
                             val caller = Throwable().stackTrace.asSequence()
@@ -192,25 +190,29 @@ object ColorOsLauncherHook {
                 })
                 NeXtepLog.info("launcher_workspace_close_animation", "Installed light return on ${method.declaringClass.simpleName}.${method.name}")
             }
-            HookGuard.run("launcher_workspace_light_animation_duration") {
-                val method = classLoader.loadClass("com.android.launcher3.anim.light.AppLaunchAnimUtil")
-                    .declaredMethods.single {
-                        it.name == "getLightWindowAnimation" && it.parameterCount == 6 &&
-                            it.returnType == android.animation.ValueAnimator::class.java &&
-                            Context::class.java.isAssignableFrom(it.parameterTypes[2])
-                    }.apply { isAccessible = true }
+            HookGuard.run("launcher_proxy_touch") {
+                val method = classLoader.loadClass("com.android.launcher3.views.BaseDragLayer")
+                    .declaredMethods.filter {
+                        it.name == "proxyTouchEvent" && it.returnType == Boolean::class.javaPrimitiveType &&
+                            it.parameterTypes.firstOrNull() == MotionEvent::class.java &&
+                            it.parameterTypes.drop(1).all { type -> type == Boolean::class.javaPrimitiveType }
+                    }.maxByOrNull { it.parameterCount }
+                    ?.apply { isAccessible = true } ?: error("No launcher proxyTouchEvent")
                 module.hook(method).intercept(object : XposedInterface.Hooker {
                     override fun intercept(chain: XposedInterface.Chain): Any? {
-                        val animator = chain.proceed() as? android.animation.ValueAnimator ?: return null
-                        val launcher = chain.args[2] as Context
-                        if (WorkspaceLauncherAnimationPolicy.applyNoAnimation(animator,
-                                LauncherTransformController.isActive(), SystemServerWorkspaceBridge.appAnimationsOff(launcher))) {
-                            NeXtepLog.info("launcher_workspace_close_animation", "Light app animation completes immediately with native cleanup")
+                        // ColorOS 17 replays a consumer's saved local events with the fourth argument true.
+                        if (chain.args.size == 4 && chain.args[3] == true) return chain.proceed()
+                        val view = chain.thisObject as? View ?: return chain.proceed()
+                        val event = chain.getArg(0) as? MotionEvent ?: return chain.proceed()
+                        val restore = LauncherTransformController.mapProxyToContent(view, event)
+                        try {
+                            return chain.proceed()
+                        } finally {
+                            restore?.let(event::transform)
                         }
-                        return animator
                     }
                 })
-                NeXtepLog.info("launcher_workspace_close_animation", "Installed native light-animation duration preference")
+                NeXtepLog.info("launcher_proxy_touch", "Installed proxy touch mapping on $method")
             }
             HookGuard.run("launcher_close_async_diag") {
                 // Diagnostic: while ColorOS marks the close animation as running, taps may go to its

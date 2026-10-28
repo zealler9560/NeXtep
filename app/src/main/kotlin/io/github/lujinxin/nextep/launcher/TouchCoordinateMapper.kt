@@ -4,6 +4,20 @@ import android.graphics.Matrix
 import android.view.MotionEvent
 
 object TouchCoordinateMapper {
+    /** Gesture consumers subtract the view's screen origin but omit its ancestor matrices. */
+    fun toLocal(event: MotionEvent, localToScreen: Matrix): Matrix? {
+        val screenToLocal = Matrix()
+        if (!localToScreen.invert(screenToLocal)) return null
+        val offsetToScreen = Matrix().apply {
+            setTranslate(event.rawX - event.x, event.rawY - event.y)
+        }
+        val toLocal = Matrix().apply { setConcat(screenToLocal, offsetToScreen) }
+        val restore = Matrix()
+        if (!toLocal.invert(restore)) return null
+        event.transform(toLocal)
+        return restore
+    }
+
     data class Transform(
         val scaleX: Float,
         val scaleY: Float,

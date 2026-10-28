@@ -127,14 +127,32 @@ object LauncherTransformController {
     fun isActive(): Boolean = active
 
     fun mapToContent(event: MotionEvent?): TouchCoordinateMapper.Transform? {
+        recordTouch(event)
+        val transform = if (active) appliedTransform else null
+        if (event != null && active && event.actionMasked == MotionEvent.ACTION_DOWN) logTouch(event, transform)
+        return transform?.takeIf { TouchCoordinateMapper.toContent(event, it) }
+    }
+
+    fun mapProxyToContent(view: View, event: MotionEvent): Matrix? {
+        if (!active || view.rootView !== decorReference.get()) return null
+        val localToScreen = Matrix().also(view::transformMatrixToGlobal)
+        val before = "${event.x},${event.y}"
+        val raw = "${event.rawX},${event.rawY}"
+        // A proxy tap is real input too, even though it bypasses Activity.dispatchTouchEvent.
+        recordTouch(event)
+        val restore = TouchCoordinateMapper.toLocal(event, localToScreen) ?: return null
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            NeXtepLog.info("launcher_proxy_touch", "down raw=$raw before=$before mapped=${event.x},${event.y}")
+        }
+        return restore
+    }
+
+    private fun recordTouch(event: MotionEvent?) {
         if (event != null && (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_UP)) {
             lastTouchX = event.rawX
             lastTouchY = event.rawY
             lastTouchAt = event.eventTime
         }
-        val transform = if (active) appliedTransform else null
-        if (event != null && active && event.actionMasked == MotionEvent.ACTION_DOWN) logTouch(event, transform)
-        return transform?.takeIf { TouchCoordinateMapper.toContent(event, it) }
     }
 
     /** A tap that opens the wrong icon is a mapping that differs from what is drawn; record both. */
@@ -161,7 +179,7 @@ object LauncherTransformController {
         return Rect(Math.round(lastTouchX) - half, Math.round(lastTouchY) - half, Math.round(lastTouchX) + half, Math.round(lastTouchY) + half)
     }
 
-    /** Whether the launcher's own window saw a tap just now: an icon launch without one did not come from the user. */
+    /** Whether the launcher received a tap through its window or gesture proxy just now. */
     fun tappedRecently(): Boolean = android.os.SystemClock.uptimeMillis() - lastTouchAt <= TAP_LAUNCH_WINDOW_MS
 
     private const val TAP_LAUNCH_WINDOW_MS = 1_000L
