@@ -13,27 +13,51 @@ internal object WorkspaceTouchDiagnostics {
     private val worker = Executors.newSingleThreadScheduledExecutor { Thread(it, "Panes-TouchDiagnostics").apply { isDaemon = true } }
     private val pending = AtomicBoolean()
     private val records = java.util.ArrayDeque<String>()
-    private var until = 0L
-    private var visible = false
+    @Volatile private var until = 0L
+    @Volatile private var visible = false
+    @Volatile private var barLayers = "not captured"
     private var lastSample = -2_000L
     private var moves = 0
     private var stream = -1L
     private var sampled = false
     private var firstX = 0f
     private var firstY = 0f
+    private var lastTouchAt = 0L
+    private var noticeShown = false
+    private var expiredNoticeShown = false
 
     fun workspace(active: Boolean) {
         if (!BuildConfig.TOUCH_DIAGNOSTICS) return
         if (active && !visible) {
             until = SystemClock.uptimeMillis() + 90_000L
+            noticeShown = false
+            expiredNoticeShown = false
+            barLayers = "pending"
             add("session start=${SystemClock.uptimeMillis()} duration=90s build=${BuildConfig.DIAGNOSTIC_BUILD}")
+            val session = until
+            worker.schedule({
+                if (visible && until == session) captureBarLayers(session)
+            }, 800, java.util.concurrent.TimeUnit.MILLISECONDS)
         }
         visible = active
         if (!active) { stream = -1L; add("session workspace hidden") }
     }
 
     fun observe(context: Context, event: MotionEvent, unlocked: Boolean) {
-        if (!BuildConfig.TOUCH_DIAGNOSTICS || !unlocked || !visible || SystemClock.uptimeMillis() > until) return
+        if (!BuildConfig.TOUCH_DIAGNOSTICS || !unlocked || !visible) return
+        val now = SystemClock.uptimeMillis()
+        if (now > until) {
+            if (!expiredNoticeShown) {
+                expiredNoticeShown = true
+                android.widget.Toast.makeText(context, "诊断采样已结束；退出再进入格窗可重新记录 90 秒", android.widget.Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        if (!noticeShown) {
+            noticeShown = true
+            android.widget.Toast.makeText(context, "诊断采样中：请在 90 秒内复现问题，再导出日志", android.widget.Toast.LENGTH_LONG).show()
+        }
+        lastTouchAt = now
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             stream = event.downTime
             moves = 0
@@ -95,9 +119,32 @@ internal object WorkspaceTouchDiagnostics {
         while (records.sumOf { it.length } > 160_000 && records.size > 1) records.removeFirst()
     }
 
+    private fun captureBarLayers(session: Long) {
+        try {
+            val process = ProcessBuilder("/system/bin/dumpsys", "-t", "2", "SurfaceFlinger").redirectErrorStream(true).start()
+            val dump = try {
+                process.inputStream.reader().use { reader ->
+                    val text = StringBuilder()
+                    val buffer = CharArray(8192)
+                    while (text.length < 2_000_000) {
+                        val read = reader.read(buffer)
+                        if (read < 0) break
+                        text.append(buffer, 0, read)
+                    }
+                    text.toString()
+                }
+            } finally { process.destroy() }
+            val snapshot = "bar layers sessionUntil=$session captured=${SystemClock.uptimeMillis()} visible=$visible\n" + StatusBarLayerSnapshot.sanitize(dump)
+            if (until == session) barLayers = snapshot
+        } catch (error: Exception) {
+            if (until == session) barLayers = "bar layers unavailable=${error.javaClass.simpleName}"
+        }
+    }
+
     fun export(): String = synchronized(records) {
         "enabled=${BuildConfig.TOUCH_DIAGNOSTICS} loadedBuild=${BuildConfig.DIAGNOSTIC_BUILD} pending=${pending.get()} " +
-            "visible=$visible remainingMs=${(until - SystemClock.uptimeMillis()).coerceAtLeast(0)}\n" +
-            records.joinToString("\n")
+            "visible=$visible remainingMs=${(until - SystemClock.uptimeMillis()).coerceAtLeast(0)} " +
+            "lastTouchAgeMs=${if (lastTouchAt > 0) SystemClock.uptimeMillis() - lastTouchAt else -1}\n" +
+            "$barLayers\n" + records.joinToString("\n")
     }
 }
