@@ -825,6 +825,25 @@ class SlotTaskCoordinator(
 
     fun openInMain(sourceIntent: Intent, autoMinimizeCurrent: Boolean = false): Result<Unit> {
         ensureMainThread()
+        if (!active || suspended || reconcilePaused || appLaunch.running) {
+            return Result.failure(IllegalStateException("Workspace transition is busy"))
+        }
+        // A new OPEN merged into a running HOME transition can be sent behind the desktop at finish.
+        val selected = Intent(sourceIntent)
+        val generation = ++mainSelectionGeneration
+        if (io.github.lujinxin.nextep.systemui.ShellTransitionLog.runOnIdle {
+                if (!active || suspended || reconcilePaused || generation != mainSelectionGeneration) return@runOnIdle
+                NeXtepLog.info("top_apps", "Native transitions idle; opening ${selected.component}")
+                openInMainAfterTransitions(selected, autoMinimizeCurrent).onFailure {
+                    NeXtepLog.warn("top_apps", "Deferred main launch failed component=${selected.component}", it)
+                    showMessage(AppLanguage.string(applicationContext, R.string.workbench_launch_failed))
+                }
+            }) return Result.success(Unit)
+        return openInMainAfterTransitions(selected, autoMinimizeCurrent)
+    }
+
+    private fun openInMainAfterTransitions(sourceIntent: Intent, autoMinimizeCurrent: Boolean): Result<Unit> {
+        ensureMainThread()
         if (!active || suspended || appLaunch.running) {
             return Result.failure(IllegalStateException("Workspace transition is busy"))
         }
