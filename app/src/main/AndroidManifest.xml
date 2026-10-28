@@ -57,6 +57,28 @@
         </activity>
 
         <activity
+            android:name=".config.ToggleWorkspaceActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- A separate launcher entry whose only job is toggling the workspace,
+             so gesture tools that can merely "open an app" (e.g. MyGesture)
+             can drive the workbench. -->
+        <activity-alias
+            android:name=".config.ToggleWorkspaceAlias"
+            android:exported="true"
+            android:icon="@drawable/ic_toggle_shortcut"
+            android:label="@string/toggle_shortcut_label"
+            android:targetActivity=".config.ToggleWorkspaceActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity
             android:name=".config.FavoriteAppsActivity"
             android:exported="false"
             android:label="@string/app_strip_title" />

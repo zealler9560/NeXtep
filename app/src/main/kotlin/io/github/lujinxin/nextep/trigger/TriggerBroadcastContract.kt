@@ -87,6 +87,15 @@ object TriggerBroadcastContract {
         .putExtra(EXTRA_SCENE, name)
         .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
 
+    fun hostToggleIntent(): Intent = Intent(ACTION_HOST_TOGGLE_REQUEST)
+        .setComponent(
+            ComponentName(
+                MODULE_PACKAGE,
+                WorkspaceControlBrokerReceiver::class.java.name,
+            ),
+        )
+        .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+
     fun hostSetIntent(active: Boolean): Intent = Intent(ACTION_HOST_SET_REQUEST)
         .setComponent(
             ComponentName(

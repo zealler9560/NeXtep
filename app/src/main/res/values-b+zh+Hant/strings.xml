@@ -103,4 +103,5 @@
     <string name="section_open">開啟方式</string>
     <string name="section_privacy">隱私</string>
     <string name="section_support">遇到問題</string>
+    <string name="toggle_shortcut_label">格窗開關</string>
 </resources>
