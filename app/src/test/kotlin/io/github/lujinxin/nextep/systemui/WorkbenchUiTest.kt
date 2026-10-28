@@ -221,6 +221,23 @@ class WorkbenchUiTest {
         assertThrows(IllegalArgumentException::class.java) { WorkbenchIntents.searches(WorkbenchIntents.Search.SHOPPING, "a".repeat(201)) }
     }
 
+    @Test fun deliveryFindsStandaloneMeituanAndDoesNotDuplicateBothClients() {
+        val query = "奶茶 & + # 😀"
+        val main = "com.sankuai.meituan"
+        val standalone = "com.sankuai.meituan.takeoutnew"
+        for (installed in listOf(setOf(main), setOf(standalone), setOf(main, standalone), emptySet())) {
+            val targets = WorkbenchIntents.searches(WorkbenchIntents.Search.DELIVERY, query) { it.`package` in installed }
+            val target = targets.single { it.name == "美团外卖" }.intent
+            assertEquals(if (main in installed) main else standalone, target.`package`)
+            assertEquals(query, target.data!!.getQueryParameter("query"))
+            if (main !in installed) {
+                assertEquals("meituanwaimai", target.data!!.scheme)
+                assertEquals("/search", target.data!!.path)
+            }
+            assertEquals(installed.isNotEmpty(), target.`package` in installed)
+        }
+    }
+
     @Test fun droppedTextAndFilesUseStandardTargetedReadOnlySharing() {
         val text = ContentDropCompat.intent(ClipData.newPlainText("source", "hello"), "target.app")
         assertEquals(Intent.ACTION_SEND, text.action)

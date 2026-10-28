@@ -113,7 +113,7 @@ internal class WorkbenchToolsController(
         val apps = LinearLayout(panel.context).apply { orientation = LinearLayout.HORIZONTAL }
         fun renderApps() {
             apps.removeAllViews()
-            runCatching { WorkbenchIntents.searches(mode, "x") }.getOrDefault(emptyList()).forEach { target ->
+            runCatching { WorkbenchIntents.searches(mode, "x", ::canOpen) }.getOrDefault(emptyList()).forEach { target ->
                 val installed = canOpen(target.intent)
                 val icon = target.intent.`package`?.let { pkg -> runCatching { context.packageManager.getApplicationIcon(pkg) }.getOrNull() }
                     ?: WorkbenchIcon(WorkbenchIcon.Kind.COMPARE, a.secondary)
@@ -211,7 +211,7 @@ internal class WorkbenchToolsController(
         fun submit() {
             if (searching) return
             val term = query.text.toString().trim()
-            val requested = runCatching { WorkbenchIntents.searches(mode, term) }.getOrNull()
+            val requested = runCatching { WorkbenchIntents.searches(mode, term, ::canOpen) }.getOrNull()
             if (requested == null) { query.error = string(R.string.workbench_query_empty); return }
             val available = requested.filter { canOpen(it.intent) }
             if (available.isEmpty()) { message(R.string.workbench_compare_missing); return }
