@@ -98,7 +98,7 @@ object TaskSurfaceCompat {
     private val transactionGuard = SurfaceTransactionGuard<Any>(
         appendOwnedTransforms = ::appendOwnedTransforms,
         shouldCompose = { shellMayWrite() && (activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() ||
-            liftedRoots.isNotEmpty() || wallpaperResets.isNotEmpty() ||
+            liftedRoots.isNotEmpty() || counterScaleResets.isNotEmpty() ||
             entryPresentations.isNotEmpty() || slotSurfaces.isNotEmpty()) },
         onFailure = { NeXtepLog.warn("task_surface", "Native transaction fitting failed open", it) },
     )
@@ -122,7 +122,7 @@ object TaskSurfaceCompat {
      * while Shell may write. ColorOS keeps the proven every-commit fitting.
      */
     private fun shellMayWrite(): Boolean = !desktopScaledHere || liftedRoots.isNotEmpty() ||
-        wallpaperResets.isNotEmpty() || SystemClock.uptimeMillis() < shellBusyUntil
+        counterScaleResets.isNotEmpty() || SystemClock.uptimeMillis() < shellBusyUntil
 
     private val applies = java.util.concurrent.atomic.AtomicInteger()
     private val composed = java.util.concurrent.atomic.AtomicInteger()
@@ -144,25 +144,20 @@ object TaskSurfaceCompat {
     @Volatile var desktopScaledHere = false
 
     private class LiftedRoot(val root: SurfaceControl, val offsetX: Float, val offsetY: Float,
-        val tasks: List<SurfaceControl>, val wallpapers: List<SurfaceControl>, val unscaled: SurfaceFrame, val since: Long)
+        val tasks: List<SurfaceControl>, val counterScaled: List<SurfaceControl>, val unscaled: SurfaceFrame, val keepTaskCrop: Boolean, val since: Long)
     private val liftedRoots = ConcurrentHashMap<Any, LiftedRoot>()
-    /** Wallpapers a finished lift left counter-scaled; the next commit, Shell's finish, puts them back. */
-    private val wallpaperResets = java.util.concurrent.ConcurrentLinkedQueue<SurfaceControl>()
+    /** The next Shell commit restores surfaces counter-scaled beneath a finished transition root. */
+    private val counterScaleResets = java.util.concurrent.ConcurrentLinkedQueue<SurfaceControl>()
 
-    /**
-     * HyperOS plays its desktop's window animations through Shell's recents handler, the launcher
-     * moving each window in its own full-screen space. Our scale on the task's leash then sat under
-     * the launcher's transform: a closing window flew to where its icon would be unscaled, under the
-     * sidebar. For the transition's length the pane transform moves onto its root, above every leash
-     * the launcher moves, and the tasks in it draw unscaled. Returns whether it did.
-     */
+    /** Put the pane transform above the native animation, so its path, crop and corners move together. */
     fun liftIntoTransitionRoot(transition: Any, info: Any, start: SurfaceControl.Transaction): Boolean = runCatching {
-        if (!desktopScaledHere) return@runCatching false
+        val type = invokeRequired(info, "getType")
+        // ColorOS uses 1021 for interactive recents; other launcher transitions keep their existing path.
+        if (!desktopScaledHere && type != 1021) return@runCatching false
         val changes = (invokeRequired(info, "getChanges") as List<*>).filterNotNull().filter { change ->
             (invokeRequired(change, "getEndDisplayId") as Int) == Display.DEFAULT_DISPLAY
         }
         val leashes = changes.mapNotNull { invokeRequired(it, "getLeash") as? SurfaceControl }
-        val type = invokeRequired(info, "getType")
         val pane = activePresentations.values.firstOrNull { presentation ->
             leashes.any { sameSurface(it, presentation.leash as SurfaceControl) }
         } ?: run {
@@ -173,14 +168,19 @@ object TaskSurfaceCompat {
         // The wallpaper rides the root too (going home shows it); it keeps the screen, counter-scaled.
         val wallpapers = changes.filter { (invokeRequired(it, "getFlags") as Int) and FLAG_IS_WALLPAPER != 0 }
             .mapNotNull { invokeRequired(it, "getLeash") as? SurfaceControl }
+        // ColorOS already scales the launcher's decor. Undo the extra root scale for HOME.
+        val homes = if (desktopScaledHere) emptyList() else changes.filter { change ->
+            (invokeRequired(change, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.let(TaskInfoCompat::isHome) == true
+        }.mapNotNull { invokeRequired(it, "getLeash") as? SurfaceControl }
+        val counterScaled = wallpapers + homes
         val root = (0 until invokeRequired(info, "getRootCount") as Int).map { invokeRequired(info, "getRoot", it)!! }
             .firstOrNull { invokeRequired(it, "getDisplayId") == Display.DEFAULT_DISPLAY } ?: return@runCatching false
         val rootLeash = invokeRequired(root, "getLeash") as SurfaceControl
         val offset = invokeRequired(root, "getOffset") as android.graphics.Point
         val frame = rootFrame(SurfaceFrame(pane.scaleX, pane.scaleY, pane.positionX, pane.positionY), offset.x, offset.y)
         liftedRoots[transition] = LiftedRoot(rootLeash, offset.x.toFloat(), offset.y.toFloat(),
-            leashes.filterNot { leash -> wallpapers.any { sameSurface(it, leash) } }, wallpapers,
-            unscaledUnder(SurfaceFrame(pane.scaleX, pane.scaleY, pane.positionX, pane.positionY)), SystemClock.uptimeMillis())
+            leashes.filterNot { leash -> counterScaled.any { sameSurface(it, leash) } }, counterScaled,
+            unscaledUnder(SurfaceFrame(pane.scaleX, pane.scaleY, pane.positionX, pane.positionY)), desktopScaledHere, SystemClock.uptimeMillis())
         start.setScale(rootLeash, frame.scaleX, frame.scaleY).setPosition(rootLeash, frame.positionX, frame.positionY)
         NeXtepLog.info("task_surface", "Lifted transition type=$type into the main pane through its root " +
             "tasks=${changes.map { (invokeRequired(it, "getTaskInfo") as? ActivityManager.RunningTaskInfo)?.taskId }} wallpapers=${wallpapers.size}")
@@ -193,19 +193,20 @@ object TaskSurfaceCompat {
     /** The transition ended, or its handler declined it: then [start] puts the root back before it shows. */
     fun dropTransitionRoot(transition: Any, start: SurfaceControl.Transaction? = null) {
         val lift = liftedRoots.remove(transition) ?: return
+        markShellBusy()
         if (start != null && lift.root.isValid) start.setScale(lift.root, 1f, 1f).setPosition(lift.root, lift.offsetX, lift.offsetY)
-        wallpaperResets += lift.wallpapers
+        counterScaleResets += lift.counterScaled
         NeXtepLog.info("task_surface", "Transition root released after ${SystemClock.uptimeMillis() - lift.since}ms" +
             if (start != null) " unplayed" else "")
     }
 
     /** Whether [surface] draws under a lifted root; a root Shell has released ends its lift. */
-    private fun lifted(surface: SurfaceControl): Boolean = liftedRoots.entries.any { (transition, lift) ->
+    private fun lifted(surface: SurfaceControl): LiftedRoot? = liftedRoots.entries.firstOrNull { (transition, lift) ->
         if (!lift.root.isValid) {
             dropTransitionRoot(transition)
             false
         } else lift.tasks.any { sameSurface(it, surface) }
-    }
+    }?.value
 
     private val sameSurfaceMethod: Method? by lazy {
         runCatching { SurfaceControl::class.java.getMethod("isSameSurface", SurfaceControl::class.java) }.getOrNull()
@@ -701,10 +702,10 @@ object TaskSurfaceCompat {
     private fun appendOwnedTransforms(transaction: Any) {
         composed.incrementAndGet()
         val native = transaction as SurfaceControl.Transaction
-        // Shell lays a wallpaper out at its root's origin and WM never moves it back; restore exactly that.
-        generateSequence { wallpaperResets.poll() }.filter { it.isValid }.forEach { native.setScale(it, 1f, 1f).setPosition(it, 0f, 0f) }
+        // Shell's finish removes its wrappers; restore wallpaper/HOME leashes to their local origin.
+        generateSequence { counterScaleResets.poll() }.filter { it.isValid }.forEach { native.setScale(it, 1f, 1f).setPosition(it, 0f, 0f) }
         liftedRoots.values.forEach { lift ->
-            if (lift.root.isValid) lift.wallpapers.filter { it.isValid }.forEach {
+            if (lift.root.isValid) lift.counterScaled.filter { it.isValid }.forEach {
                 native.setScale(it, lift.unscaled.scaleX, lift.unscaled.scaleY).setPosition(it, lift.unscaled.positionX, lift.unscaled.positionY)
             }
         }
@@ -767,7 +768,9 @@ object TaskSurfaceCompat {
     private fun writeFrame(transaction: Any, leash: Any, target: SurfaceFrame) {
         val nativeTransaction = transaction as SurfaceControl.Transaction
         val surface = leash as SurfaceControl
-        val frame = if (liftedRoots.isNotEmpty() && lifted(surface)) target.copy(scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f) else target
+        val lift = if (liftedRoots.isEmpty()) null else lifted(surface)
+        val frame = if (lift != null) target.copy(scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f,
+            crop = if (lift.keepTaskCrop) target.crop else null) else target
         // Keep native visibility, fade, layer order and parenting intact.
         nativeTransaction.setCrop(surface, frame.crop)
             .setScale(surface, frame.scaleX, frame.scaleY)
