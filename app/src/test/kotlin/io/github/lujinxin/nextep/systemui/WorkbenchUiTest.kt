@@ -275,7 +275,7 @@ class WorkbenchUiTest {
         for (bottom in listOf(true, false)) {
             val geometry = WorkspaceGeometry.forDisplay(1216, 2640, SidebarSide.LEFT, 3f, controlAtBottom = bottom)
             bridge.publish(context, true, geometry)
-            val encoded = android.provider.Settings.Global.getString(context.contentResolver, "nextep_workspace_geometry_v1")
+            val encoded = android.provider.Settings.Global.getString(context.contentResolver, "nextep_workspace_geometry_v2")
             assertEquals(geometry, decode.invoke(bridge, encoded))
         }
         // Records written by the previous release still decode with the control at the top.
