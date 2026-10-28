@@ -14,7 +14,10 @@ internal object InputDispatchSnapshot {
         .mapNotNull { packageName.find(it)?.value?.substringBefore('/') }.take(32).toSet()
 
     private fun identity(name: String): String = "w=${name.hashCode().toUInt().toString(16)}" +
-        (packageName.find(name)?.value?.let { " pkg=$it" } ?: "")
+        (packageName.find(name)?.value?.let { " pkg=$it" } ?: "") +
+        (name.takeIf { it in setOf("[Gesture Monitor] NeXtep-bottom-corners", "[Gesture Monitor] NeXtep-wide-back",
+            "[Gesture Monitor] OplusExInputReceiver1", "[Gesture Monitor] swipe-up", "[Gesture Monitor] edge-swipe") }
+            ?.let { " monitor=${it.substringAfter("] ")}" } ?: "")
 
     fun sanitize(dump: String): String {
         val result = mutableListOf<String>()
@@ -58,6 +61,10 @@ internal object InputDispatchSnapshot {
                 }
                 section == "TouchStatesByDisplay" && Regex("(?:displayId|deviceId|source|down|split)=[0-9a-zA-Z, =]+").matches(line) ->
                     result += line
+                section == "TouchStatesByDisplay" && Regex("LogicalDisplayId [0-9]+:").matches(line) -> result += line
+                section == "TouchStatesByDisplay" && line.startsWith("DeviceId(") -> {
+                    Regex("pilferingPointerIds=(<none>|[01]+)").find(line)?.let { result += it.value }
+                }
             }
             if (result.size >= 300) { result += "truncated"; break }
         }

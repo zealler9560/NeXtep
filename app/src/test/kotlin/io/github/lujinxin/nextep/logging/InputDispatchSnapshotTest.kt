@@ -15,6 +15,7 @@ class InputDispatchSnapshotTest {
           TouchStatesByDisplay:
             displayId=0, down=true, split=false
               0: name='abc com.example.driver/.Order', targetFlags=FOREGROUND | AS_IS, pointerIds=0
+                DeviceId(-1):[touchingPointers=[Pointer(id=0, FINGER)], pilferingPointerIds=00001]
           Display: 0
             logicalSize=1220x2712
             Windows:
@@ -32,6 +33,7 @@ class InputDispatchSnapshotTest {
         val result = InputDispatchSnapshot.sanitize(dump)
         assertTrue(result.contains("TouchStatesByDisplay w="))
         assertTrue(result.contains("flags=FOREGROUND | AS_IS"))
+        assertTrue(result.contains("pilferingPointerIds=00001"))
         assertTrue(result.contains("pkg=com.example.driver"))
         assertTrue(result.contains("frame=[259,636][1220,2712]"))
         assertTrue(result.contains("touchableRegion=[259,636][1220,2712]"))
