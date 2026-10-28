@@ -125,20 +125,7 @@ object TaskSurfaceCompat {
      * while Shell may write. ColorOS keeps the proven every-commit fitting.
      */
     private fun shellMayWrite(): Boolean = !desktopScaledHere || liftedRoots.isNotEmpty() ||
-        wallpaperResets.isNotEmpty() || SystemClock.uptimeMillis().let { it < shellBusyUntil || it < touchedUntil }
-
-    @Volatile private var touchedUntil = 0L
-    /** Presentations whose commit fitting was skipped, logged once each for the export. */
-    private val skipsLogged = java.util.Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())
-
-    /**
-     * A touch on the screen. Swiping the HyperOS desktop's pages put its leash back to full size from outside
-     * SystemUI (no SystemUI write was seen), and only the 900 ms steady reapply restored the pane. While a finger
-     * is down and the pages settle after, every SystemUI commit carries the pane, so such a write lasts a frame.
-     */
-    fun noteTouch() {
-        if (desktopScaledHere) touchedUntil = SystemClock.uptimeMillis() + TOUCH_FITTING_MS
-    }
+        wallpaperResets.isNotEmpty() || SystemClock.uptimeMillis() < shellBusyUntil
 
     private val applies = java.util.concurrent.atomic.AtomicInteger()
     private val composed = java.util.concurrent.atomic.AtomicInteger()
@@ -721,14 +708,10 @@ object TaskSurfaceCompat {
         // Fit at commit, after their writes, so no identity-sized frame reaches the display
         // between polling corrections. Use the current animation frame, not its final target.
         activePresentations.values.forEach { presentation ->
-            if (activePresentations[presentation.taskId] !== presentation) return@forEach
-            val owned = ownedTaskLeash(presentation.taskId)
-            if (owned !== presentation.leash || !isValid(presentation.leash)) {
-                if (skipsLogged.add(presentation.taskId)) NeXtepLog.info("task_surface", "Commit fitting skips " +
-                    "taskId=${presentation.taskId} state=${observedStates[presentation.taskId]} owned=${owned != null} " +
-                    "valid=${isValid(presentation.leash)}")
-                return@forEach
-            }
+            if (activePresentations[presentation.taskId] !== presentation ||
+                ownedTaskLeash(presentation.taskId) !== presentation.leash ||
+                !isValid(presentation.leash)
+            ) return@forEach
             writeFrame(transaction, presentation.leash, presentation.frame)
         }
         entryPresentations.values.forEach { presentation ->
@@ -1020,8 +1003,6 @@ object TaskSurfaceCompat {
     private const val SHELL_BUSY_MS = 3_000L
     private const val STATS_WINDOW_MS = 10_000L
     private const val FOREIGN_WRITE_LOG_MS = 2_000L
-    /** A page fling and its settle after the finger lifts. */
-    private const val TOUCH_FITTING_MS = 1_500L
     /** TransitionInfo.FLAG_IS_WALLPAPER (hidden). */
     private const val FLAG_IS_WALLPAPER = 1 shl 1
 }
