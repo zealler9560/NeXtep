@@ -446,7 +446,7 @@ internal class WorkbenchToolsController(
     }.getOrDefault(false)
 
     fun exportDiagnostics(): Boolean {
-        io.github.lujinxin.nextep.logging.LauncherDiagnosticsContract.query(context, ::writeDiagnostics)
+        io.github.lujinxin.nextep.logging.LauncherDiagnosticsContract.queryForExport(context, ::writeDiagnostics)
         return true
     }
 
@@ -467,7 +467,8 @@ internal class WorkbenchToolsController(
         return "hyperos=${prop("ro.mi.os.version.name")} miui=${prop("ro.miui.ui.version.name")} " +
             "incremental=${prop("ro.build.version.incremental")}\n" +
             "home=${home?.packageName?.let(::app)} activity=${home?.name}\n" +
-            "shim=${app("io.muse.nextepshim")} imeState=${ime?.take(160)}\n"
+            "shim=${app("io.muse.nextepshim")} imeState=${ime?.take(160)}\n" +
+            "assistant=${app(io.github.lujinxin.nextep.trigger.TriggerBroadcastContract.ASSISTANT_SCREEN_PACKAGE)}\n"
     }
 
     private fun writeDiagnostics(launcher: String?): Boolean {

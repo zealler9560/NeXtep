@@ -126,6 +126,30 @@ object LauncherTransformController {
 
     fun isActive(): Boolean = active
 
+    /** Numeric root geometry only: never export window titles, view text or child content. */
+    internal fun diagnostics(): String = runCatching {
+        val managerClass = Class.forName("android.view.WindowManagerGlobal")
+        val manager = managerClass.getDeclaredMethod("getInstance").apply { isAccessible = true }.invoke(null)
+        val views = managerClass.getDeclaredField("mViews").apply { isAccessible = true }
+            .get(manager) as? Collection<*> ?: emptyList<Any>()
+        "root transforms active=$active\n" + views.filterIsInstance<View>().take(16).joinToString("\n") { view ->
+            val mapped = assistantTransforms[view] ?: appliedTransform.takeIf { decorReference.get() === view }
+            val params = view.layoutParams as? WindowManager.LayoutParams
+            "root class=${view.javaClass.name} display=${view.display?.displayId} type=${params?.type} " +
+                "panel=${isAssistantPanel(view)} tracked=${assistantRoots.containsKey(view)} " +
+                "mapped=$mapped " + rootGeometry(view)
+        }
+    }.getOrElse { "root transforms unavailable=${it.javaClass.simpleName}" }
+
+    internal fun rootGeometry(view: View): String {
+        val at = IntArray(2).also(view::getLocationOnScreen)
+        val params = view.layoutParams as? WindowManager.LayoutParams
+        return "size=${view.width}x${view.height} xy=${at[0]},${at[1]} " +
+            "windowXY=${params?.x},${params?.y} shown=${view.isShown} alpha=${view.alpha} " +
+            "scale=${view.scaleX},${view.scaleY} translation=${view.translationX},${view.translationY} " +
+            "pivot=${view.pivotX},${view.pivotY} animationMatrix=${view.animationMatrix?.toShortString()} clip=${view.clipBounds}"
+    }
+
     internal fun appAnimationsOff(): Boolean = active && decorReference.get()?.let {
         SystemServerWorkspaceBridge.appAnimationsOff(it.context)
     } == true
