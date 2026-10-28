@@ -187,3 +187,21 @@ NeXtep-Panes-3.0.2-scroll-toggle.apk. Install: uninstall official Panes first
 if present (signature differs; install-over works from the muse-signed 2.6.2
 fork build), disable+uninstall NeXtepHomeShim, LSPosed scope = SystemUI /
 系统框架 / 系统桌面, reboot; point MyGesture at 格窗开关.
+
+## On-device round 2 (2026-10-28 15:04 test, log LSPosed_20261028_150627)
+Roster growth now works live (user video: 5th add slot present, column scrolls).
+Two defects found and fixed same day:
+1. 格窗开关 dead: logcat (full.log) shows ToggleWorkspaceAlias created+finished
+   3x in 12s with no toggle; the broker-receiver relay hop silently went
+   nowhere on HyperOS. Fix 614aa0c: ToggleWorkspaceActivity now calls
+   TriggerCoordinator.requestToggle directly (the QS tile's exact path),
+   source DESKTOP_SHORTCUT, stays alive until the answer, toasts on NotReady.
+   hostToggleIntent builder removed. (The one MainActivity launch in the log
+   was the neighbouring 格窗工作台 icon, not the alias.)
+2. Scroll black flash: slot_pause logs show cover=null on scroll pauses.
+   applyScrollOffset set fully-out cards INVISIBLE, destroying their
+   SurfaceView surfaces: last frame lost AND captureCardPreview (reads the
+   task output) returned null, so the pause cover — the mask meant to hide
+   the reload — was blank. Fix 0affb5c: no visibility toggle; translated
+   cards are clipped by the rail window, surfaces keep frames, covers capture.
+Rebuilt (Actions 40648596341), re-signed, redelivered; verification pending.
