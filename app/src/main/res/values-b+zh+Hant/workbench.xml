@@ -14,7 +14,7 @@
     <string name="workbench_query">輸入要搜尋的商品</string>
     <string name="workbench_search">搜尋比價</string>
     <string name="workbench_query_empty">請輸入商品名稱，最多200字。</string>
-    <string name="workbench_delivery_apps">京東秒送 · 淘寶閃購 · 美團外送</string>
+    <string name="workbench_delivery_apps">京東外送 · 淘寶閃購 · 美團外送</string>
     <string name="workbench_shopping_apps">拼多多 · 抖音商城 · 京東 · 淘寶</string>
     <string name="workbench_compare_failed">請保留足夠的空側窗，並檢查已安裝的應用版本是否支援搜尋入口。</string>
     <string name="workbench_compare_missing">找不到支援這些搜尋入口的已安裝應用。</string>

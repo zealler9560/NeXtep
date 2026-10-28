@@ -31,14 +31,16 @@ internal object WorkbenchIntents {
         require(query.isNotEmpty() && query.length <= 200 && query.none { it.isISOControl() })
         val encoded = Uri.encode(query)
         fun jd(instant: Boolean): Intent {
-            val params = if (instant) JSONObject().put("category", "jump").put("des", "m")
-                .put("url", "https://daojia.jd.com/#/IndexSearch?keyword=$encoded&real_keyword=$encoded")
+            val params = if (instant) JSONObject().put("category", "jump").put("des", "channelProductList")
+                .put("from", "channelProductList").put("caller", "3000").put("svcType", "lbs")
+                .put("channelId", "13376").put("keyword", query)
+                .put("extParams", JSONObject().put("hourlyGoChannelStyle", "1"))
             else JSONObject().put("category", "jump").put("des", "productList")
                 .put("from", "search").put("keyWord", encoded)
             return view("openapp.jdmobile://virtual?params=${Uri.encode(params.toString())}", "com.jingdong.app.mall")
         }
         return if (mode == Search.DELIVERY) listOf(
-            Target("京东秒送", jd(true)),
+            Target("京东外卖", jd(true)),
             Target("淘宝闪购", view("taobao://tb.ele.me/app/eleme/et-search/result?keyword=$encoded", "com.taobao.taobao")),
             Target("美团外卖", view("imeituan://www.meituan.com/takeout/poi/search?query=$encoded", "com.sankuai.meituan")
                 .let { main -> if (canOpen(main)) main else view("meituanwaimai://waimai.meituan.com/search?query=$encoded", "com.sankuai.meituan.takeoutnew") }),

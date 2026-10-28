@@ -13,7 +13,7 @@
     <string name="workbench_query">검색할 상품</string>
     <string name="workbench_search">여러 앱에서 검색</string>
     <string name="workbench_query_empty">상품명을 200자 이내로 입력해 주세요.</string>
-    <string name="workbench_delivery_apps">JD 즉시 배송 · Taobao 즉시 배송 · Meituan 배달</string>
+    <string name="workbench_delivery_apps">JD 음식 배달 · Taobao 즉시 배송 · Meituan 배달</string>
     <string name="workbench_shopping_apps">Pinduoduo · Douyin Mall · JD · Taobao</string>
     <string name="workbench_compare_failed">빈 보조 창을 확보하고 앱이 검색 링크를 지원하는지 확인해 주세요.</string>
     <string name="workbench_compare_missing">이 검색을 지원하는 설치된 앱이 없습니다.</string>
