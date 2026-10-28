@@ -71,6 +71,30 @@ object TaskSurfaceCompat {
     private val methodCache = ConcurrentHashMap<MethodKey, Method>()
     private val cropMethods = ConcurrentHashMap<Class<*>, Method>()
     private val presentationAnimators = ConcurrentHashMap<Int, ValueAnimator>()
+    private val runningTransitions = ConcurrentHashMap<Any, Set<Int>>()
+    private val restoringPresentations = ConcurrentHashMap<Int, ActivePresentation>()
+
+    fun observeTransition(token: Any, taskIds: Set<Int>) {
+        val owned = taskIds.filterTo(mutableSetOf()) {
+            activePresentations.containsKey(it) || preparedPresentations.containsKey(it) || entryPresentations.containsKey(it)
+        }
+        if (owned.isNotEmpty()) runningTransitions[token] = owned
+    }
+
+    fun finishTransition(token: Any) {
+        runningTransitions.remove(token)?.forEach(::finishRestore)
+    }
+
+    private fun finishRestore(taskId: Int) {
+        val full = restoringPresentations[taskId] ?: return
+        if (presentationAnimators[taskId]?.isRunning == true || runningTransitions.values.any { taskId in it }) return
+        if (activePresentations[taskId] === full) {
+            applyPresentation(full)
+            activePresentations.remove(taskId, full)
+        }
+        restoringPresentations.remove(taskId, full)
+        NeXtepLog.info("task_surface", "Fullscreen restore settled taskId=$taskId after native transitions")
+    }
     private val transactionGuard = SurfaceTransactionGuard<Any>(
         appendOwnedTransforms = ::appendOwnedTransforms,
         shouldCompose = { shellMayWrite() && (activePresentations.isNotEmpty() || preparedPresentations.isNotEmpty() ||
@@ -409,6 +433,7 @@ object TaskSurfaceCompat {
     /** [source]: the icon the user tapped; its flight covers the task, which lands in place at once. */
     fun present(taskId: Int, geometry: WorkspaceGeometry, source: Rect? = null): Result<Unit> = runCatching {
         require(taskId > 0) { "Invalid taskId=$taskId" }
+        restoringPresentations.remove(taskId)
         // Recovery polling must not restart the entry fade on an already presented task.
         if (activePresentations.containsKey(taskId)) {
             reapply(taskId, geometry).getOrThrow()
@@ -458,6 +483,7 @@ object TaskSurfaceCompat {
     }
 
     fun reapply(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> = runCatching {
+        restoringPresentations.remove(taskId)
         val previous = activePresentations[taskId]
             ?: error("No active surface presentation for taskId=$taskId")
         val now = SystemClock.uptimeMillis()
@@ -528,25 +554,21 @@ object TaskSurfaceCompat {
             )
             return@runCatching
         }
+        val now = SystemClock.uptimeMillis()
+        val full = ActivePresentation(taskId, leash, 1f, 1f, 0f, 0f, now, now, crop = null)
+        // A corner swipe can cancel Back/Recents after the exit fade. Its queued finish still
+        // contains the pane matrix: keep the fullscreen frame owned until that transition finishes.
+        activePresentations[taskId] = full
+        restoringPresentations[taskId] = full
         if (animated && previous != null) {
-            // Grow back to full screen over the panel fade; ownership ends with the last frame.
-            val now = SystemClock.uptimeMillis()
-            val full = ActivePresentation(taskId, leash, 1f, 1f, 0f, 0f, now, now, crop = null)
-            activePresentations[taskId] = full
             animatePresentation(taskId, previous, full, fadeIn = false, durationMs = RESTORE_DURATION_MS) {
-                if (activePresentations[taskId] === full) activePresentations.remove(taskId)
+                finishRestore(taskId)
             }
             NeXtepLog.info("task_surface", "Restoring taskId=$taskId animated")
             return@runCatching
         }
-        applyPresentation(
-            taskId = taskId,
-            leash = leash,
-            scaleX = 1f,
-            scaleY = 1f,
-            positionX = 0f,
-            positionY = 0f,
-        )
+        applyPresentation(full)
+        finishRestore(taskId)
         NeXtepLog.info("task_surface", "Restored taskId=$taskId")
     }.onFailure { error ->
         NeXtepLog.error("task_surface", "Restore failed taskId=$taskId", error)

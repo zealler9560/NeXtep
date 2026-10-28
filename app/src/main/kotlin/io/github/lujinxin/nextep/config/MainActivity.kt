@@ -14,6 +14,7 @@ import androidx.core.view.updatePadding
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CoolapkProfile.initialize(this)
         supportActionBar?.hide()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT

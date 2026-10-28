@@ -86,7 +86,7 @@ object MiuiHomeProbe {
         if (now - activeReadAt > 500) {
             activeReadAt = now
             active = runCatching {
-                android.provider.Settings.Global.getInt(view.context.contentResolver, "nextep_workspace_active_v1", 0) == 1
+                android.provider.Settings.Global.getInt(view.context.contentResolver, "nextep_workspace_active_v2", 0) == 1
             }.getOrDefault(false)
         }
         if (!active) return
@@ -106,7 +106,7 @@ object MiuiHomeProbe {
         if (reports.incrementAndGet() > 60) return
         val decor = activity.window?.decorView
         val active = runCatching {
-            android.provider.Settings.Global.getInt(activity.contentResolver, "nextep_workspace_active_v1", 0)
+            android.provider.Settings.Global.getInt(activity.contentResolver, "nextep_workspace_active_v2", 0)
         }.getOrDefault(-1)
         // The HyperOS launcher ships a Flutter engine (libapp.so); Dart-drawn views carry no scale a View hook could see.
         val flutter = decor?.let { count(it) { view -> view.javaClass.name.contains("Flutter") } } ?: 0

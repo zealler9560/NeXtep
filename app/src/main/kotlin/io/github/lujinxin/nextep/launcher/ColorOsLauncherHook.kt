@@ -68,11 +68,16 @@ object ColorOsLauncherHook {
                         val intent = chain.args.getOrNull(1) as? Intent
                         if (!WorkspaceLauncherAnimationPolicy.useStaticSource(
                                 LauncherTransformController.isActive(), intent)) return chain.proceed()
-                        // ColorOS swallows taps during its return animation and then starts the previous
-                        // app's icon by itself (seen on ColorOS 17: WeChat tapped, 富途 opened with no tap
-                        // reaching the launcher). In the workspace only a launch the user tapped goes through.
+                        // Accept touches from both the Activity and the return gesture's proxy.
                         if (!LauncherTransformController.tappedRecently()) {
-                            NeXtepLog.warn("launcher_redirect", "Refused launch without a tap component=${intent?.component}")
+                            val source = chain.args.getOrNull(0) as? View
+                            val caller = Throwable().stackTrace.asSequence()
+                                .filterNot { it.className.startsWith("io.github.lujinxin") || it.className.startsWith("io.github.libxposed") ||
+                                    it.className.startsWith("java.lang.reflect") || it.className.startsWith("LSPHooker") ||
+                                    it.className.startsWith("org.lsposed") }
+                                .take(14).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+                            NeXtepLog.warn("launcher_redirect", "Refused launch without a tap component=${intent?.component} " +
+                                "view=${source?.javaClass?.name} at=${source?.let { LauncherTransformController.screenBounds(it) }} by $caller")
                             return false
                         }
                         val args = chain.args.toTypedArray()
@@ -84,7 +89,7 @@ object ColorOsLauncherHook {
                             // Launcher3's own bounds take in the label below the icon; the icon's square is the source.
                             intent?.sourceBounds = LauncherTransformController.screenBounds(icon)
                             iconBitmap(icon)?.let { intent?.putExtra(TriggerBroadcastContract.EXTRA_ICON_BITMAP, it) }
-                            liftIcon(icon)
+                            if (!SystemServerWorkspaceBridge.appAnimationsOff(icon.context)) liftIcon(icon)
                         } else NeXtepLog.info("launcher_redirect", "No icon source: view=${view?.javaClass?.name} " +
                             "size=${view?.width}x${view?.height} attached=${view?.isAttachedToWindow} bounds=${intent?.sourceBounds}")
                         args[0] = null
@@ -93,6 +98,30 @@ object ColorOsLauncherHook {
                 })
                 NeXtepLog.info("launcher_workspace_app_animation", "Installed static workspace launch source")
                 module.log(android.util.Log.INFO, "NeXtep", "Installed static workspace launch source")
+            }
+            HookGuard.run("launcher_item_click_log") {
+                // Diagnostics: who clicks an icon or folder in the workspace, and whether a finger did.
+                val handler = classLoader.loadClass("com.android.launcher3.touch.ItemClickHandler")
+                val methods = handler.declaredMethods.filter { it.name == "onClick" && it.parameterTypes.contentEquals(arrayOf(View::class.java)) }
+                check(methods.isNotEmpty()) { "No ItemClickHandler.onClick" }
+                methods.forEach { method ->
+                    method.isAccessible = true
+                    module.hook(method).intercept(object : XposedInterface.Hooker {
+                        override fun intercept(chain: XposedInterface.Chain): Any? {
+                            if (LauncherTransformController.isActive()) runCatching {
+                                val view = chain.args[0] as? View
+                                val caller = Throwable().stackTrace.asSequence()
+                                    .filterNot { it.className.startsWith("io.github.lujinxin") || it.className.startsWith("io.github.libxposed") ||
+                                        it.className.startsWith("java.lang.reflect") || it.className.startsWith("LSPHooker") ||
+                                        it.className.startsWith("org.lsposed") }
+                                    .take(12).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+                                NeXtepLog.info("launcher_item_click", "view=${view?.javaClass?.simpleName} tag=${view?.tag?.javaClass?.simpleName} " +
+                                    "at=${view?.let { LauncherTransformController.screenBounds(it) }} tapped=${LauncherTransformController.tappedRecently()} by $caller")
+                            }
+                            return chain.proceed()
+                        }
+                    })
+                }
             }
             HookGuard.run("launcher_recent_task_selection") {
                 val recents = classLoader.loadClass("com.android.quickstep.views.RecentsView")
@@ -160,6 +189,55 @@ object ColorOsLauncherHook {
                     }
                 })
                 NeXtepLog.info("launcher_workspace_close_animation", "Installed light return on ${method.declaringClass.simpleName}.${method.name}")
+            }
+            HookGuard.run("launcher_finish_close_animation") {
+                val animation = classLoader.loadClass("com.android.launcher3.anim.engine.core.LauncherAnimation")
+                val type = animation.getMethod("getAnimationType")
+                module.hook(animation.getMethod("start")).intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        val result = chain.proceed()
+                        val current = chain.thisObject ?: return result
+                        runCatching {
+                            val name = (type.invoke(current) as? Enum<*>)?.name
+                            if (WorkspaceLauncherAnimationPolicy.shouldFinishClose(
+                                    LauncherTransformController.isActive(), LauncherTransformController.appAnimationsOff(), name)) {
+                                // Let the native start finish wiring its listeners before committing its final frame.
+                                android.os.Handler(android.os.Looper.myLooper() ?: android.os.Looper.getMainLooper()).post {
+                                    if (LauncherTransformController.appAnimationsOff()) runCatching {
+                                        WorkspaceLauncherAnimationPolicy.finishClose(current)
+                                        NeXtepLog.info("launcher_finish_close", "Finished native close type=$name")
+                                    }.onFailure { NeXtepLog.warn("launcher_finish_close", "Native close finish unavailable", it) }
+                                }
+                            }
+                        }.onFailure { NeXtepLog.warn("launcher_finish_close", "Native close type unavailable", it) }
+                        return result
+                    }
+                })
+                NeXtepLog.info("launcher_finish_close", "Installed native close completion hook")
+            }
+            HookGuard.run("launcher_proxy_touch") {
+                val method = classLoader.loadClass("com.android.launcher3.views.BaseDragLayer")
+                    .declaredMethods.filter {
+                        it.name == "proxyTouchEvent" && it.returnType == Boolean::class.javaPrimitiveType &&
+                            it.parameterTypes.firstOrNull() == MotionEvent::class.java &&
+                            it.parameterTypes.drop(1).all { type -> type == Boolean::class.javaPrimitiveType }
+                    }.maxByOrNull { it.parameterCount }
+                    ?.apply { isAccessible = true } ?: error("No launcher proxyTouchEvent")
+                module.hook(method).intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        // ColorOS 17 replays a consumer's saved local events with the fourth argument true.
+                        if (chain.args.size == 4 && chain.args[3] == true) return chain.proceed()
+                        val view = chain.thisObject as? View ?: return chain.proceed()
+                        val event = chain.getArg(0) as? MotionEvent ?: return chain.proceed()
+                        val restore = LauncherTransformController.mapProxyToContent(view, event)
+                        try {
+                            return chain.proceed()
+                        } finally {
+                            restore?.let(event::transform)
+                        }
+                    }
+                })
+                NeXtepLog.info("launcher_proxy_touch", "Installed proxy touch mapping on $method")
             }
             HookGuard.run("launcher_close_async_diag") {
                 // Diagnostic: while ColorOS marks the close animation as running, taps may go to its

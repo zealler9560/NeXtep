@@ -32,7 +32,7 @@ internal object WorkspaceDisplayTransitionHook {
                 it.name == "isAnimationsDisabledForAnyDisplay" &&
                     it.returnType == Boolean::class.javaPrimitiveType &&
                     it.parameterTypes.singleOrNull()?.name == "android.window.TransitionInfo"
-            }?.apply { isAccessible = true } ?: return installImmediateFinish(module, loader)
+            }?.apply { isAccessible = true } ?: return installImmediateFinish(module, loader, exchanges = true)
         module.hook(method).intercept(object : XposedInterface.Hooker {
             override fun intercept(chain: XposedInterface.Chain): Any? {
                 val info = chain.args.firstOrNull()
@@ -45,6 +45,10 @@ internal object WorkspaceDisplayTransitionHook {
             }
         })
         NeXtepLog.info("workspace_display_transition", "Installed scoped native exchange completion")
+        // App opens and closes in the main window are not exchanges; with their animations off they finish
+        // at play, before the launcher's return animation can start (it swallowed taps and replayed them).
+        runCatching { installImmediateFinish(module, loader, exchanges = false) }
+            .onFailure { NeXtepLog.warn("workspace_display_transition", "Immediate app transition finish unavailable", it) }
     }
 
     /**
@@ -52,7 +56,7 @@ internal object WorkspaceDisplayTransitionHook {
      * so it never reaches the default handler. Finish it the same way before any handler plays it:
      * commit its start, then report it finished, as that fast path does.
      */
-    private fun installImmediateFinish(module: XposedModule, loader: ClassLoader) {
+    private fun installImmediateFinish(module: XposedModule, loader: ClassLoader, exchanges: Boolean) {
         val handlerClass = loader.loadClass("com.android.wm.shell.transition.DefaultTransitionHandler")
         val transitions = loader.loadClass("com.android.wm.shell.transition.Transitions")
         val play = transitions.declaredMethods.single { it.name == "playTransition" && it.parameterTypes.size == 1 }
@@ -69,7 +73,10 @@ internal object WorkspaceDisplayTransitionHook {
                 val preset = field(active, "mHandler")
                 // Shell's dispatch log never sees a claimed transition.
                 if (preset != null) ShellTransitionLog.log(info, preset, "preset")
-                if (!runCatching { isWorkspaceExchange(info) }.getOrDefault(false)) return chain.proceed()
+                val exchange = exchanges && runCatching { isWorkspaceExchange(info) }.getOrDefault(false)
+                val app = !exchange && SystemUiRuntime.appAnimationsOff() &&
+                    runCatching { isMainWindowAppTransition(info) }.getOrDefault(false)
+                if (!exchange && !app) return chain.proceed()
                 val token = field(active, "mToken") ?: return chain.proceed()
                 // Shell's finish bookkeeping names the handler that played it: the default one, as on ColorOS.
                 val default = (field(chain.thisObject!!, "mHandlers") as? List<*>)?.firstOrNull { handlerClass.isInstance(it) }
@@ -82,7 +89,8 @@ internal object WorkspaceDisplayTransitionHook {
                 setField(active, "mHandler", default)
                 return try {
                     finish.invoke(chain.thisObject, token, null)
-                    NeXtepLog.info("workspace_display_transition", "Finished workspace exchange at once instead of ${
+                    NeXtepLog.info("workspace_display_transition", "Finished ${if (exchange) "workspace exchange" else
+                        "app ${call(info, "getType")} in the main window"} at once instead of ${
                         preset?.javaClass?.name?.substringAfterLast('.') ?: "dispatch"}")
                     null
                 } catch (error: Throwable) {
@@ -92,7 +100,7 @@ internal object WorkspaceDisplayTransitionHook {
                 }
             }
         })
-        NeXtepLog.info("workspace_display_transition", "Installed immediate exchange completion at play")
+        NeXtepLog.info("workspace_display_transition", "Installed immediate ${if (exchanges) "exchange and " else ""}app completion at play")
     }
 
     private fun declared(target: Any, name: String): java.lang.reflect.Field? = generateSequence<Class<*>>(target.javaClass) { it.superclass }
@@ -101,6 +109,24 @@ internal object WorkspaceDisplayTransitionHook {
     private fun field(target: Any, name: String): Any? = declared(target, name)?.get(target)
 
     private fun setField(target: Any, name: String, value: Any?) { declared(target, name)?.set(target, value) }
+
+    /** An app opening, closing or coming to front in the main window: its tasks stay on the phone's display. */
+    private fun isMainWindowAppTransition(info: Any): Boolean {
+        val type = call(info, "getType") as? Int ?: return false
+        if (type !in TRANSIT_OPEN..TRANSIT_TO_BACK || call(info, "isKeyguardGoingAway") == true) return false
+        val changes = call(info, "getChanges") as? List<*> ?: return false
+        var tasks = 0
+        for (change in changes) {
+            change ?: return false
+            val task = call(change, "getTaskInfo") as? ActivityManager.RunningTaskInfo ?: continue
+            if (call(change, "getEndDisplayId") != Display.DEFAULT_DISPLAY ||
+                call(change, "getStartDisplayId") !in setOf(Display.DEFAULT_DISPLAY, Display.INVALID_DISPLAY)) return false
+            val state = TaskInfoCompat.readWindowState(task) ?: return false
+            if (state.vendorWindowed || state.windowingMode != 1) return false
+            tasks++
+        }
+        return tasks > 0
+    }
 
     private fun isWorkspaceExchange(info: Any): Boolean {
         val type = call(info, "getType") as? Int ?: return false
@@ -179,6 +205,8 @@ internal object WorkspaceDisplayTransitionHook {
     private fun call(target: Any, name: String): Any? = target.javaClass.getMethod(name).invoke(target)
 
     private const val TRANSIT_CHANGE = 6
+    private const val TRANSIT_OPEN = 1
+    private const val TRANSIT_TO_BACK = 4
     private const val FLAG_IS_WALLPAPER = 2
     private const val FLAG_IS_DISPLAY = 32
     /** TransitionInfo.FLAG_IS_TASK_DISPLAY_AREA (hidden). */

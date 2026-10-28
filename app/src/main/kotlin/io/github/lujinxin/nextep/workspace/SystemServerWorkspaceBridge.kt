@@ -11,11 +11,15 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 import java.util.concurrent.atomic.AtomicBoolean
 
 object SystemServerWorkspaceBridge {
-    private const val ACTIVE_KEY = "nextep_workspace_active_v1"
+    // v2: the retired HyperOS companion module reads the v1 keys, scales the desktop once more and remaps its
+    // touches, on top of SystemUI scaling it; publish() holds v1 inactive so a leftover install stays idle.
+    private const val ACTIVE_KEY = "nextep_workspace_active_v2"
+    private const val LEGACY_ACTIVE_KEY = "nextep_workspace_active_v1"
     private const val WIDTH_KEY = "nextep_workspace_screen_width_v1"
     private const val HEIGHT_KEY = "nextep_workspace_screen_height_v1"
     private const val SIDEBAR_SIDE_KEY = "nextep_workspace_sidebar_side_v1"
-    private const val GEOMETRY_KEY = "nextep_workspace_geometry_v1"
+    private const val GEOMETRY_KEY = "nextep_workspace_geometry_v2"
+    private const val APP_ANIMATIONS_OFF_KEY = "nextep_workspace_app_animations_off_v1"
     private val geometryObservationStarted = AtomicBoolean(false)
     @Volatile private var observedGeometry: WorkspaceGeometry? = null
     @Volatile private var observedWideDisplay = -1
@@ -105,6 +109,15 @@ object SystemServerWorkspaceBridge {
             Settings.Global.getInt(context.contentResolver, WIDE_DISPLAY_KEY, -1) > 0 && isWorkspaceActive(context)
         }.getOrDefault(false)
 
+    /** The launcher reads it: without the launch animation there is no flight to hide the tapped icon under. */
+    fun publishAppAnimationsOff(context: Context, off: Boolean) {
+        runCatching { Settings.Global.putInt(context.contentResolver, APP_ANIMATIONS_OFF_KEY, if (off) 1 else 0) }
+            .onFailure { NeXtepLog.warn("system_server_bridge", "Unable to publish appAnimationsOff=$off", it) }
+    }
+
+    fun appAnimationsOff(context: Context): Boolean =
+        runCatching { Settings.Global.getInt(context.contentResolver, APP_ANIMATIONS_OFF_KEY, 1) == 1 }.getOrDefault(true)
+
     fun publishLayout(context: Context, profile: WorkspaceLayoutProfile) {
         runCatching {
             Settings.Global.putString(context.contentResolver, "nextep_workspace_layout_profile_v2", profile.encode())
@@ -128,6 +141,7 @@ object SystemServerWorkspaceBridge {
                 ).joinToString(","))
             }
             Settings.Global.putInt(resolver, ACTIVE_KEY, if (active) 1 else 0)
+            if (Settings.Global.getInt(resolver, LEGACY_ACTIVE_KEY, 0) != 0) Settings.Global.putInt(resolver, LEGACY_ACTIVE_KEY, 0)
         }.onFailure { error ->
             NeXtepLog.warn("system_server_bridge", "Unable to publish active=$active", error)
         }

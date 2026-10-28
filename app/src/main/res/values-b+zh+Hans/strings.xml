@@ -18,6 +18,8 @@
     <string name="gesture_summary">从左下角向右上、或右下角向左上斜滑，打开或关闭工作区。</string>
     <string name="auto_minimize_title">打开新应用时缩小原应用</string>
     <string name="auto_minimize_summary">从顶栏、通知、控制中心等任何地方打开应用时，原大窗应用移入空小窗；没有空位时退到后台。</string>
+    <string name="app_animations_off_title">关闭应用打开和关闭动画</string>
+    <string name="app_animations_off_summary">工作台中，从桌面打开应用、关闭应用回到桌面时不播放动画，直接切换。</string>
     <string name="font_value">字体：%1$s</string>
     <string name="font_bold">粗体</string>
     <string name="font_size_value">字号：%1$d sp</string>
@@ -105,4 +107,5 @@
     <string name="section_privacy">隐私</string>
     <string name="section_support">遇到问题</string>
     <string name="toggle_shortcut_label">格窗开关</string>
+    <string name="about_coolapk">关注我酷安：%1$s</string>
 </resources>

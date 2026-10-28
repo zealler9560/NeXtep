@@ -205,3 +205,17 @@ Two defects found and fixed same day:
    the reload — was blank. Fix 0affb5c: no visibility toggle; translated
    cards are clipped by the rail window, surfaces keep frames, covers capture.
 Rebuilt (Actions 40648596341), re-signed, redelivered; verification pending.
+
+## Upstream v3.0.3 merge (2026-10-28 18:4x CST)
+
+User asked "检查格窗更新我们的fork"; upstream had published v3.0.3 at
+18:12 CST (16 commits). Fork main fast-forwarded 8234adb -> 277107a,
+then merged into scroll-column-v3. Conflicts: only the three
+strings.xml files (our toggle_shortcut_label vs upstream's new
+about_coolapk) — resolved as union. All Kotlin auto-merged; verified
+afterwards: showOccupied keeps fade-only, applyScrollOffset keeps the
+no-visibility-toggle fix, ToggleWorkspaceActivity keeps the direct
+TriggerCoordinator.requestToggle(DESKTOP_SHORTCUT) call.
+Upstream 3.0.3 notes: first-tap-after-home fix, exit fullscreen restore,
+animation-preference honoured, corner seams, 300 ms swap travel,
+first-run Coolapk auto-open (fresh installs only — upgrades exempt).

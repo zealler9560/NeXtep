@@ -32,6 +32,21 @@ class WorkbenchUiTest {
     private fun field(target: Any, name: String): Any = target.javaClass.getDeclaredField(name)
         .apply { isAccessible = true }.get(target)!!
 
+    @Test fun panelEdgesAndMainCornersUseOneContinuousTone() {
+        for (theme in WorkbenchAppearance.entries) {
+            val panel = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888)
+            val background = theme.background()
+            background.setBounds(0, 0, 100, 100)
+            background.draw(android.graphics.Canvas(panel))
+            assertEquals(panel.getPixel(50, 0), panel.getPixel(50, 99))
+            val corner = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888)
+            val mask = WorkbenchFrameDrawable(theme.panelEnd, android.graphics.Color.TRANSPARENT, 20f, 1f)
+            mask.setBounds(0, 0, 100, 100)
+            mask.draw(android.graphics.Canvas(corner))
+            assertEquals(panel.getPixel(50, 0), corner.getPixel(0, 0))
+        }
+    }
+
     @Test fun sceneBarIsInTheTopRightControlRowAndNeverInTheAppCatalogue() {
         var opened = 0
         val view = TopAppStripView(context, {}, {},
@@ -275,7 +290,7 @@ class WorkbenchUiTest {
         for (bottom in listOf(true, false)) {
             val geometry = WorkspaceGeometry.forDisplay(1216, 2640, SidebarSide.LEFT, 3f, controlAtBottom = bottom)
             bridge.publish(context, true, geometry)
-            val encoded = android.provider.Settings.Global.getString(context.contentResolver, "nextep_workspace_geometry_v1")
+            val encoded = android.provider.Settings.Global.getString(context.contentResolver, "nextep_workspace_geometry_v2")
             assertEquals(geometry, decode.invoke(bridge, encoded))
         }
         // Records written by the previous release still decode with the control at the top.

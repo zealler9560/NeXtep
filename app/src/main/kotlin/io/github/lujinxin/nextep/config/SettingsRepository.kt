@@ -19,6 +19,7 @@ class SettingsRepository(private val context: Context) {
         val statusBarGestureEnabled: Boolean,
         val slotBackgroundSwipeEnabled: Boolean,
         val autoMinimizeMainOnTopAppSwitch: Boolean,
+        val appAnimationsOff: Boolean,
         val navigationButtonsEnabled: Boolean,
     )
 
@@ -45,6 +46,7 @@ class SettingsRepository(private val context: Context) {
         slotBackgroundSwipeEnabled = preferences.getBoolean("slot_background_swipe_enabled", true),
         // On by default now that it covers every way an app opens; a new key so the old default-off value does not carry over.
         autoMinimizeMainOnTopAppSwitch = preferences.getBoolean("auto_minimize_main_v2", true),
+        appAnimationsOff = preferences.getBoolean("app_animations_off_v1", true),
         navigationButtonsEnabled = preferences.getBoolean("navigation_buttons_enabled", false),
     )
 
@@ -55,6 +57,11 @@ class SettingsRepository(private val context: Context) {
 
     fun setAutoMinimizeMainOnTopAppSwitch(enabled: Boolean) {
         preferences.edit().putBoolean("auto_minimize_main_v2", enabled).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setAppAnimationsOff(enabled: Boolean) {
+        preferences.edit().putBoolean("app_animations_off_v1", enabled).apply()
         notifyTopContentChanged()
     }
 

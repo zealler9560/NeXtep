@@ -12,12 +12,12 @@ import android.graphics.RectF
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
+import android.view.animation.PathInterpolator
 import io.github.lujinxin.nextep.logging.NeXtepLog
 
-/** Animate disposable previews first; perform the display move while the final
- * preview covers relayout, then fade to the live buffers. Nothing retains an app
- * frame after the transition ends or the workspace is hidden/locked. */
+/** Animate disposable previews first; perform the display move once the final preview is on screen
+ * and covers relayout, then cut to the live buffers in one frame. Nothing retains an app frame after
+ * the transition ends or the workspace is hidden/locked. */
 internal class WorkspaceSwapAnimator(
     private val context: Context,
     /** The panels' frosted wallpaper over the whole screen; null until it has been captured. */
@@ -29,33 +29,33 @@ internal class WorkspaceSwapAnimator(
     data class Frame(val bitmap: Bitmap?, val from: RectF, var to: RectF, val empty: Boolean = false,
                      val topFill: Boolean = false)
     private val manager = context.getSystemService(WindowManager::class.java)
+    /** Added once and kept hidden between exchanges: adding and removing a window per exchange made
+     * its first and last frames land a frame apart from the panels' changes, which showed as a flash. */
     private var overlay: SwapPreviewView? = null
+    private var showing = false
     private var animator: ValueAnimator? = null
     private var generation = 0
     private var frozen = false
     fun animate(
         source: Bitmap?, target: Bitmap?, targetEmpty: Boolean,
         start: RectF, sourceBounds: RectF, targetBounds: RectF,
-        screenWidth: Int, screenHeight: Int,
         move: (() -> Unit) -> Unit,
     ) = animateFrames(listOf(
         // The vacated card travels back as well, so no bare panel shows where it lands.
         Frame(target, targetBounds, sourceBounds, empty = targetEmpty),
         Frame(source, start, targetBounds),
-    ), listOf(sourceBounds, targetBounds), screenWidth, screenHeight, move)
+    ), listOf(sourceBounds, targetBounds), move)
 
-    fun animateFrames(frames: List<Frame>, covers: List<RectF>, screenWidth: Int, screenHeight: Int,
-                      move: (() -> Unit) -> Unit) {
-        if (show(frames, covers, screenWidth, screenHeight)) animateOverlay(move) else move {}
+    fun animateFrames(frames: List<Frame>, covers: List<RectF>, move: (() -> Unit) -> Unit) {
+        if (show(frames, covers)) animateOverlay(move) else move {}
     }
 
     /** Hold [frames] at their start positions over the live windows until [play]. */
-    fun freeze(frames: List<Frame>, covers: List<RectF>, screenWidth: Int, screenHeight: Int): Boolean =
-        show(frames, covers, screenWidth, screenHeight).also { frozen = it }
+    fun freeze(frames: List<Frame>, covers: List<RectF>): Boolean = show(frames, covers).also { frozen = it }
 
     /** Runs [action] once, when the overlay's first frame is on screen (at once without an overlay). */
     fun whenShown(action: () -> Unit) {
-        val preview = overlay ?: return action()
+        val preview = overlay?.takeIf { showing } ?: return action()
         var done = false
         fun once() {
             if (!done) { done = true; action() }
@@ -63,7 +63,7 @@ internal class WorkspaceSwapAnimator(
         preview.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
             override fun onPreDraw(): Boolean {
                 preview.viewTreeObserver.removeOnPreDrawListener(this)
-                // A new window shows a frame after its commit and the window manager's next pass;
+                // A window turning visible shows a frame after its commit and the window manager's next pass;
                 // two vsyncs after the draw were once one short, and the layout change showed first.
                 val choreographer = android.view.Choreographer.getInstance()
                 preview.viewTreeObserver.registerFrameCommitCallback {
@@ -75,36 +75,8 @@ internal class WorkspaceSwapAnimator(
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(::once, SHOW_TIMEOUT_MS)
     }
 
-    /** Identifies the running animation; [refresh] ignores pictures meant for an earlier one. */
+    /** Identifies the running animation; a hand-over meant for an earlier one is ignored. */
     val current: Int get() = generation
-
-    /** Dissolve frame [index] of animation [current] into [fresh], such as its app as the window it moved to
-     * shows it (an app lays out again there), then run [then]. */
-    fun refresh(index: Int, fresh: Bitmap?, current: Int = generation, then: () -> Unit = {}) {
-        val preview = overlay?.takeIf { current == generation }
-        val frame = preview?.frames?.getOrNull(index)
-        if (fresh == null || preview == null || frame == null) {
-            fresh?.recycle()
-            return then()
-        }
-        preview.fading = frame.bitmap?.let { index to it }
-        preview.fadeAlpha = 1f
-        preview.frames = preview.frames.toMutableList().also { it[index] = frame.copy(bitmap = fresh) }
-        animator = ValueAnimator.ofFloat(1f, 0f).apply {
-            duration = DISSOLVE_MS
-            addUpdateListener {
-                preview.fadeAlpha = it.animatedValue as Float
-                preview.invalidate()
-            }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    preview.endFade()
-                    if (current == generation) then()
-                }
-            })
-            start()
-        }
-    }
 
     /** Hold one more still frame over the frozen ones, such as a card laid out after the freeze. */
     fun holdAlso(frame: Frame) {
@@ -113,7 +85,7 @@ internal class WorkspaceSwapAnimator(
         preview.invalidate()
     }
 
-    /** Move the frozen frames to [targets] behind [covers]; [move] gets the fade into the live windows. */
+    /** Move the frozen frames to [targets] behind [covers]; [move] gets the cut to the live windows. */
     fun play(targets: List<RectF>, covers: List<RectF>, replace: Map<Int, Bitmap?> = emptyMap(),
              move: (() -> Unit) -> Unit = { reveal -> reveal() }) {
         val preview = overlay?.takeIf { frozen } ?: return move {}
@@ -129,17 +101,15 @@ internal class WorkspaceSwapAnimator(
         animateOverlay(move)
     }
 
-    private fun show(frames: List<Frame>, covers: List<RectF>, screenWidth: Int, screenHeight: Int): Boolean {
-        cancel()
-        val windowType = SystemUiWindowTypeResolver.resolve()
-        if (windowType == null) {
-            frames.forEach { it.bitmap?.recycle() }
-            return false
-        }
-        val preview = SwapPreviewView(context, frames, covers, appearance(), backdrop())
+    /** Adds the overlay window, hidden, ahead of the first exchange. */
+    fun prepare() {
+        if (overlay != null) return
+        val windowType = SystemUiWindowTypeResolver.resolve() ?: return
+        val preview = SwapPreviewView(context, emptyList(), emptyList(), appearance()).apply { visibility = View.INVISIBLE }
         val params = WindowManager.LayoutParams(
-            screenWidth, screenHeight, windowType,
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, windowType,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -150,21 +120,39 @@ internal class WorkspaceSwapAnimator(
             setFitInsetsTypes(0)
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         }
-        val added = runCatching { manager.addView(preview, params) }.isSuccess
-        if (!added) {
-            preview.release()
+        runCatching { manager.addView(preview, params) }
+            .onSuccess { overlay = preview }
+            .onFailure { NeXtepLog.warn("slot_drag", "Swap overlay window unavailable", it) }
+    }
+
+    fun release() {
+        cancel()
+        val preview = overlay ?: return
+        overlay = null
+        runCatching { manager.removeViewImmediate(preview) }
+    }
+
+    private fun show(frames: List<Frame>, covers: List<RectF>): Boolean {
+        cancel()
+        prepare()
+        val preview = overlay
+        if (preview == null) {
+            frames.forEach { it.bitmap?.recycle() }
             return false
         }
-        overlay = preview
+        preview.bind(frames, covers, appearance(), backdrop())
+        preview.alpha = 1f
+        preview.visibility = View.VISIBLE
+        showing = true
         return true
     }
 
     private fun animateOverlay(move: (() -> Unit) -> Unit) {
-        val preview = overlay ?: return move {}
+        val preview = overlay?.takeIf { showing } ?: return move {}
         val token = ++generation
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 220L
-            interpolator = DecelerateInterpolator(1.6f)
+            duration = SWAP_MS
+            interpolator = PathInterpolator(0.22f, 0f, 0.12f, 1f)
             addUpdateListener {
                 preview.progress = it.animatedValue as Float
                 preview.invalidate()
@@ -173,30 +161,34 @@ internal class WorkspaceSwapAnimator(
                 override fun onAnimationEnd(animation: Animator) {
                     if (generation != token) return
                     animator = null
-                    fun reveal() {
-                        if (generation != token) return
-                        animator = ValueAnimator.ofFloat(1f, 0f).apply {
-                            duration = 100L
-                            addUpdateListener { preview.alpha = it.animatedValue as Float }
-                            addListener(object : AnimatorListenerAdapter() {
-                                override fun onAnimationEnd(animation: Animator) {
-                                    if (generation == token) {
-                                        animator = null
-                                        this@WorkspaceSwapAnimator.cancel()
-                                    }
-                                }
-                            })
-                            start()
+                    preview.progress = 1f
+                    // The final frame must be on screen before the move: the move's relayout would
+                    // otherwise show between the last committed frame and the one that covers it.
+                    afterCommit(preview) {
+                        if (generation != token) return@afterCommit
+                        runCatching {
+                            move {
+                                // Cut on the next frame; a fade showed the live windows still settling under it.
+                                preview.postOnAnimation { if (generation == token) this@WorkspaceSwapAnimator.cancel() }
+                            }
+                        }.onFailure {
+                            NeXtepLog.warn("slot_drag", "Exchange callback failed", it)
+                            this@WorkspaceSwapAnimator.cancel()
                         }
-                    }
-                    runCatching { move(::reveal) }.onFailure {
-                        NeXtepLog.warn("slot_drag", "Exchange callback failed", it)
-                        this@WorkspaceSwapAnimator.cancel()
                     }
                 }
             })
             start()
         }
+    }
+
+    private fun afterCommit(preview: View, action: () -> Unit) {
+        var done = false
+        val once = Runnable { if (!done) { done = true; action() } }
+        preview.viewTreeObserver.registerFrameCommitCallback { preview.post(once) }
+        preview.invalidate()
+        // A window that draws nothing (screen turning off) never commits; the move must still run.
+        preview.postDelayed(once, COMMIT_TIMEOUT_MS)
     }
 
     /** Fade the frames held by [freeze] into the live windows beneath, where they are. */
@@ -229,19 +221,20 @@ internal class WorkspaceSwapAnimator(
         frozen = false
         animator?.cancel()
         animator = null
-        val previous = overlay
-        overlay = null
-        previous?.animate()?.cancel()
-        if (previous != null) {
-            runCatching { manager.removeViewImmediate(previous) }
-            previous.release()
+        if (!showing) return
+        showing = false
+        overlay?.apply {
+            animate().cancel()
+            visibility = View.INVISIBLE
+            clear()
         }
     }
 
     private companion object {
         /** A frozen overlay that never draws must not hold up the transition behind it. */
         const val SHOW_TIMEOUT_MS = 250L
-        const val DISSOLVE_MS = 150L
+        const val SWAP_MS = 300L
+        const val COMMIT_TIMEOUT_MS = 100L
     }
 }
 
@@ -250,32 +243,62 @@ internal class SwapPreviewView(
     var frames: List<WorkspaceSwapAnimator.Frame>,
     var covers: List<RectF>,
     appearance: WorkbenchAppearance,
-    private val backdrop: android.graphics.drawable.Drawable? = null,
+    private var backdrop: android.graphics.drawable.Drawable? = null,
 ) : View(context) {
     var progress = 0f
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     // Covers mimic the panel behind moving cards; cards mimic a live slot, so the
-    // fade into the real windows changes nothing visible in either theme.
-    private val coverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = appearance.opaquePanel }
-    private val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = appearance.card }
-    private val emptyCardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = appearance.slotCard }
+    // cut to the real windows changes nothing visible in either theme.
+    private val coverPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val emptyCardPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = appearance.outline
         style = Paint.Style.STROKE
         strokeWidth = resources.displayMetrics.density
     }
-    private val badge = appearance.emptyBadge(resources.displayMetrics.density)
+    private var badge = appearance.emptyBadge(resources.displayMetrics.density)
     private val badgeSize = (WorkbenchAppearance.BADGE_SIZE_DP * resources.displayMetrics.density).toInt()
     private val destination = RectF()
     private val sourceRect = Rect()
     private val clipPath = android.graphics.Path()
     private val cornerRadius = resources.displayMetrics.density * 14f
-    private var released = false
+
+    init {
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        paint(appearance)
+    }
+
+    private fun paint(appearance: WorkbenchAppearance) {
+        coverPaint.color = appearance.opaquePanel
+        cardPaint.color = appearance.card
+        emptyCardPaint.color = appearance.slotCard
+        borderPaint.color = appearance.outline
+        badge = appearance.emptyBadge(resources.displayMetrics.density)
+    }
+
+    /** Show [frames] at their start, for an exchange; the view keeps the bitmaps until [clear]. */
+    fun bind(frames: List<WorkspaceSwapAnimator.Frame>, covers: List<RectF>, appearance: WorkbenchAppearance,
+             backdrop: android.graphics.drawable.Drawable?) {
+        clear()
+        this.frames = frames
+        this.covers = covers
+        this.backdrop = backdrop
+        paint(appearance)
+        progress = 0f
+        invalidate()
+    }
+
+    /** Release every app frame; the view draws nothing until the next [bind]. */
+    fun clear() {
+        frames.forEach { it.bitmap?.recycle() }
+        frames = emptyList()
+        covers = emptyList()
+    }
 
     override fun onDraw(canvas: Canvas) {
-        if (released) return
         // The live tasks stay put until the compositor move. Cover their old
         // positions so a shrinking preview cannot expose a second stationary app.
+        val backdrop = backdrop
         covers.forEach { cover ->
             if (backdrop == null) return@forEach canvas.drawRoundRect(cover, cornerRadius, cornerRadius, coverPaint)
             val save = canvas.save()
@@ -286,17 +309,7 @@ internal class SwapPreviewView(
             backdrop.draw(canvas)
             canvas.restoreToCount(save)
         }
-        frames.forEachIndexed { index, frame -> drawFrame(canvas, frame, fading?.takeIf { it.first == index }?.second) }
-    }
-
-    /** The picture a frame dissolves from, drawn over its new one at [fadeAlpha]. */
-    var fading: Pair<Int, Bitmap>? = null
-    var fadeAlpha = 0f
-
-    fun endFade() {
-        fading?.second?.recycle()
-        fading = null
-        invalidate()
+        frames.forEach { drawFrame(canvas, it) }
     }
 
     private fun drawFitted(canvas: Canvas, bitmap: Bitmap, topFill: Boolean, paint: Paint) {
@@ -310,9 +323,7 @@ internal class SwapPreviewView(
             destination.centerX() + imageWidth / 2, top + imageHeight), paint)
     }
 
-    private val fadePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-
-    private fun drawFrame(canvas: Canvas, frame: WorkspaceSwapAnimator.Frame, fadeFrom: Bitmap?) {
+    private fun drawFrame(canvas: Canvas, frame: WorkspaceSwapAnimator.Frame) {
         val (bitmap, from, to, empty) = frame
         fun interpolate(a: Float, b: Float) = a + (b - a) * progress
         destination.set(interpolate(from.left, to.left), interpolate(from.top, to.top),
@@ -321,6 +332,7 @@ internal class SwapPreviewView(
         clipPath.reset()
         clipPath.addRoundRect(destination, cornerRadius, cornerRadius, android.graphics.Path.Direction.CW)
         canvas.clipPath(clipPath)
+        val backdrop = backdrop
         if (empty && backdrop != null) {
             // An empty slot is a faint card over the frosted panel, wherever it travels.
             backdrop.setBounds(0, 0, width, height)
@@ -332,21 +344,8 @@ internal class SwapPreviewView(
             val top = (destination.centerY() - badgeSize / 2f).toInt()
             badge.setBounds(left, top, left + badgeSize, top + badgeSize)
             badge.draw(canvas)
-        } else if (bitmap != null) {
-            drawFitted(canvas, bitmap, frame.topFill, bitmapPaint)
-            if (fadeFrom != null && !fadeFrom.isRecycled) {
-                fadePaint.alpha = (fadeAlpha * 255).toInt()
-                drawFitted(canvas, fadeFrom, frame.topFill, fadePaint)
-            }
-        }
+        } else if (bitmap != null && !bitmap.isRecycled) drawFitted(canvas, bitmap, frame.topFill, bitmapPaint)
         canvas.restoreToCount(save)
         canvas.drawRoundRect(destination, cornerRadius, cornerRadius, borderPaint)
-    }
-
-    fun release() {
-        if (released) return
-        released = true
-        frames.forEach { it.bitmap?.recycle() }
-        fading?.second?.recycle()
     }
 }

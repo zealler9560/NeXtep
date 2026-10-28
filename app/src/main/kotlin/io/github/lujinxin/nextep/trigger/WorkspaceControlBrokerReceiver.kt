@@ -7,6 +7,8 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 
 class WorkspaceControlBrokerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // Read before goAsync(), which takes the pending result this reads from.
+        val ordered = isOrderedBroadcast
         val pendingResult = goAsync()
         val callback: (TriggerCoordinator.RequestResult) -> Unit = { result ->
             NeXtepLog.info("trigger_broker", "SystemUI request completed result=$result")
@@ -19,7 +21,13 @@ class WorkspaceControlBrokerReceiver : BroadcastReceiver() {
                     TriggerSource.TOP_RIGHT_STATUS_BAR_GESTURE,
                     callback,
                 )
-            TriggerBroadcastContract.ACTION_HOST_SET_REQUEST ->
+            // SystemUI sends this ordered. The retired HyperOS companion module relays every SystemUI set it
+            // sees as a plain broadcast, and acting on it made SystemUI set again: the workbench opened and
+            // closed every few hundred milliseconds (HyperOS 3).
+            TriggerBroadcastContract.ACTION_HOST_SET_REQUEST -> if (!ordered) {
+                NeXtepLog.info("trigger_broker", "Ignored a relayed set request")
+                pendingResult.finish()
+            } else
                 TriggerCoordinator.requestSet(
                     context,
                     intent.getBooleanExtra(
