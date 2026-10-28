@@ -74,6 +74,15 @@ object TaskSurfaceCompat {
     private val runningTransitions = ConcurrentHashMap<Any, Set<Int>>()
     private val restoringPresentations = ConcurrentHashMap<Int, ActivePresentation>()
 
+    /** Expected inverse of our task leash only; the dispatcher snapshot supplies the actual window transform. */
+    internal fun touchDiagnostics(x: Float, y: Float): String = activePresentations.values.take(8).joinToString("; ") { p ->
+        val f = p.frame
+        val state = observedStates[p.taskId]
+        "task=${p.taskId} display=${state?.displayId} bounds=${state?.bounds} " +
+            "frame=$f expected=${(x - f.positionX) / f.scaleX},${(y - f.positionY) / f.scaleY} " +
+            "roots=${liftedRoots.size} restoring=${restoringPresentations.containsKey(p.taskId)}"
+    }
+
     fun observeTransition(token: Any, taskIds: Set<Int>) {
         val owned = taskIds.filterTo(mutableSetOf()) {
             activePresentations.containsKey(it) || preparedPresentations.containsKey(it) || entryPresentations.containsKey(it)

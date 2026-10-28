@@ -253,6 +253,7 @@ object SystemUiRuntime {
     }
 
     private fun publishWorkspaceSurfaceState(active: Boolean) {
+        io.github.lujinxin.nextep.logging.WorkspaceTouchDiagnostics.workspace(active)
         TriggerBroadcastContract.systemUiSetIntent(applicationContext, active)?.let {
             applicationContext.sendBroadcast(it)
         }
