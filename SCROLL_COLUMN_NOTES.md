@@ -168,3 +168,22 @@ show()/entry paths apply the layout unconditionally, hence "works after re-entry
 Fix: updateRosterSize now re-applies applySlotLayout to the live panel directly
 (panel.post, guarded by workspaceVisible) after setRosterSlotCount. The LSPosed log
 export cannot confirm NeXtepLog lines (they go to logcat, not the modules log).
+
+## 2026-10-28: ported to upstream 3.0.2 + desktop toggle switch (branch scroll-column-v3)
+Upstream 3.0.1 (5bbb609) merged the HyperOS adaptation into the main app: the
+companion shim is obsolete (desktop answers/transform done by SystemUI since
+2.6.7-beta.3; the IME three-target check was ported into WorkspaceImeSurfaceHook).
+But the merge dropped the shim's 格窗开关 desktop toggle that MyGesture used.
+New branch scroll-column-v3 = origin/main (3.0.2, versionCode 115) + all
+scroll-column commits cherry-picked (one trivial conflict in resumeAfterLock,
+resolved by keeping the resetScroll() before applySlotLayout) + the roster
+live-apply fix + commit 95c27e3 adding the toggle: ToggleWorkspaceActivity
+(config/, translucent trampoline, same pattern as SceneShortcutActivity) fires
+TriggerBroadcastContract.hostToggleIntent() at the broker — same-UID delivery
+is what passes the broker's STATUS_BAR_SERVICE guard — and a launcher
+activity-alias labelled 格窗开关 (ic_toggle_shortcut) exposes it to gesture
+tools. Built by GitHub Actions run 40646203149, muse-signed, delivered as
+NeXtep-Panes-3.0.2-scroll-toggle.apk. Install: uninstall official Panes first
+if present (signature differs; install-over works from the muse-signed 2.6.2
+fork build), disable+uninstall NeXtepHomeShim, LSPosed scope = SystemUI /
+系统框架 / 系统桌面, reboot; point MyGesture at 格窗开关.
