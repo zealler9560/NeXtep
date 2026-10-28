@@ -60,40 +60,6 @@ object SystemUiHook {
                 })
             }
             NeXtepLog.info("task_surface_transaction_guard", "Installed atomic task fitting at native commit")
-            val floatType = Float::class.javaPrimitiveType
-            val writers = transactionClass.declaredMethods.filter { method ->
-                val types = method.parameterTypes
-                types.firstOrNull() == android.view.SurfaceControl::class.java && when (method.name) {
-                    "setScale", "setPosition" -> types.size == 3 && types[1] == floatType && types[2] == floatType
-                    "setMatrix" -> types.size == 5 && types.drop(1).all { it == floatType } ||
-                        types.size == 3 && types[1] == android.graphics.Matrix::class.java
-                    else -> false
-                }
-            }
-            writers.forEach { method ->
-                method.isAccessible = true
-                module.hook(method).intercept(object : io.github.libxposed.api.XposedInterface.Hooker {
-                    override fun intercept(chain: io.github.libxposed.api.XposedInterface.Chain): Any? {
-                        val surface = chain.args[0] as? android.view.SurfaceControl ?: return chain.proceed()
-                        runCatching {
-                            val args = chain.args
-                            when {
-                                method.name == "setPosition" -> io.github.lujinxin.nextep.framework.TaskSurfaceCompat
-                                    .noteLeashWrite(surface, null, null, args[1] as Float, args[2] as Float)
-                                method.name == "setScale" -> io.github.lujinxin.nextep.framework.TaskSurfaceCompat
-                                    .noteLeashWrite(surface, args[1] as Float, args[2] as Float, null, null)
-                                args.size == 5 -> io.github.lujinxin.nextep.framework.TaskSurfaceCompat
-                                    .noteLeashWrite(surface, args[1] as Float, args[4] as Float, null, null)
-                                // A Matrix write carries its own translation; never the pane's own form.
-                                else -> io.github.lujinxin.nextep.framework.TaskSurfaceCompat
-                                    .noteLeashWrite(surface, Float.NaN, Float.NaN, Float.NaN, Float.NaN)
-                            }
-                        }
-                        return chain.proceed()
-                    }
-                })
-            }
-            NeXtepLog.info("task_surface_transaction_guard", "Watching ${writers.size} leash writers for the gated fitting")
             module.log(android.util.Log.INFO, "NeXtep", "Installed slot exchange settlement guard; protocol=${io.github.lujinxin.nextep.trigger.TriggerBroadcastContract.RUNTIME_PROTOCOL_VERSION}")
         }
         HookGuard.run("slot_retention_display_area") {
