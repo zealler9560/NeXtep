@@ -393,11 +393,19 @@ object TaskSurfaceCompat {
     /** A task's own layer wherever it is shown; a pane whose display composes nothing mirrors it. */
     fun taskLeash(taskId: Int): SurfaceControl? = findTaskLeash(taskId, requireMainDisplay = false) as? SurfaceControl
 
+    internal val screenCaptureClass: Class<*> by lazy {
+        try {
+            Class.forName("android.window.ScreenCaptureInternal")
+        } catch (_: ClassNotFoundException) {
+            Class.forName("android.window.ScreenCapture")
+        }
+    }
+
     /** [surface]'s children at [scale]; a layer without bounds of its own needs [crop]. Throws when unavailable. */
     fun captureLayers(surface: Any, crop: android.graphics.Rect?, scale: Float): android.graphics.Bitmap? {
         val surfaceType = Class.forName("android.view.SurfaceControl")
-        val captureType = Class.forName("android.window.ScreenCaptureInternal")
-        val builderType = Class.forName("android.window.ScreenCaptureInternal\$LayerCaptureArgs\$Builder")
+        val captureType = screenCaptureClass
+        val builderType = Class.forName("${captureType.name}\$LayerCaptureArgs\$Builder")
         val builder = builderType.getConstructor(surfaceType).newInstance(surface)
         if (crop != null) builderType.getMethod("setSourceCrop", android.graphics.Rect::class.java).invoke(builder, crop)
         builderType.getMethod("setFrameScale", Float::class.javaPrimitiveType).invoke(builder, scale)
