@@ -27,7 +27,7 @@ internal class WorkspaceSwapAnimator(
     /** A frame without a bitmap draws as a card; an empty one also carries the plus badge.
      * A [topFill] frame fills its width from the top, so a portrait page shows its player in a wide pane. */
     data class Frame(val bitmap: Bitmap?, val from: RectF, var to: RectF, val empty: Boolean = false,
-                     val topFill: Boolean = false)
+                     val topFill: Boolean = false, val endBitmap: Bitmap? = null)
     private val manager = context.getSystemService(WindowManager::class.java)
     /** Added once and kept hidden between exchanges: adding and removing a window per exchange made
      * its first and last frames land a frame apart from the panels' changes, which showed as a flash. */
@@ -79,22 +79,27 @@ internal class WorkspaceSwapAnimator(
     val current: Int get() = generation
 
     /** Hold one more still frame over the frozen ones, such as a card laid out after the freeze. */
-    fun holdAlso(frame: Frame) {
-        val preview = overlay?.takeIf { frozen } ?: return
-        preview.frames = preview.frames + frame
+    fun holdAlso(frame: Frame, behind: Boolean = false) {
+        val preview = overlay?.takeIf { frozen } ?: run {
+            listOfNotNull(frame.bitmap, frame.endBitmap).distinct().forEach { it.recycle() }
+            return
+        }
+        preview.frames = if (behind) listOf(frame) + preview.frames else preview.frames + frame
         preview.invalidate()
     }
 
     /** Move the frozen frames to [targets] behind [covers]; [move] gets the cut to the live windows. */
     fun play(targets: List<RectF>, covers: List<RectF>, replace: Map<Int, Bitmap?> = emptyMap(),
              move: (() -> Unit) -> Unit = { reveal -> reveal() }) {
-        val preview = overlay?.takeIf { frozen } ?: return move {}
+        val preview = overlay?.takeIf { frozen } ?: run {
+            replace.values.filterNotNull().distinct().forEach { it.recycle() }
+            return move {}
+        }
         frozen = false
-        // A frame can travel with a fresher picture of its app, such as the page laid out after the freeze.
+        // Keep the frozen picture at progress zero; the relaid-out page arrives during the flight.
         preview.frames = preview.frames.mapIndexed { index, frame ->
             val fresh = replace[index] ?: return@mapIndexed frame
-            frame.bitmap?.recycle()
-            frame.copy(bitmap = fresh)
+            frame.copy(endBitmap = fresh)
         }
         preview.frames.zip(targets).forEach { (frame, target) -> frame.to = target }
         preview.covers = covers
@@ -137,7 +142,7 @@ internal class WorkspaceSwapAnimator(
         prepare()
         val preview = overlay
         if (preview == null) {
-            frames.forEach { it.bitmap?.recycle() }
+            frames.flatMap { listOfNotNull(it.bitmap, it.endBitmap) }.distinct().forEach { it.recycle() }
             return false
         }
         preview.bind(frames, covers, appearance(), backdrop())
@@ -259,6 +264,7 @@ internal class SwapPreviewView(
     private var badge = appearance.emptyBadge(resources.displayMetrics.density)
     private val badgeSize = (WorkbenchAppearance.BADGE_SIZE_DP * resources.displayMetrics.density).toInt()
     private val destination = RectF()
+    private val imageDestination = RectF()
     private val sourceRect = Rect()
     private val clipPath = android.graphics.Path()
     private val cornerRadius = resources.displayMetrics.density * 14f
@@ -290,7 +296,7 @@ internal class SwapPreviewView(
 
     /** Release every app frame; the view draws nothing until the next [bind]. */
     fun clear() {
-        frames.forEach { it.bitmap?.recycle() }
+        frames.flatMap { listOfNotNull(it.bitmap, it.endBitmap) }.distinct().forEach { it.recycle() }
         frames = emptyList()
         covers = emptyList()
     }
@@ -319,8 +325,9 @@ internal class SwapPreviewView(
         val imageHeight = bitmap.height * scale
         val top = if (topFill) destination.top else destination.centerY() - imageHeight / 2
         sourceRect.set(0, 0, bitmap.width, bitmap.height)
-        canvas.drawBitmap(bitmap, sourceRect, RectF(destination.centerX() - imageWidth / 2, top,
-            destination.centerX() + imageWidth / 2, top + imageHeight), paint)
+        imageDestination.set(destination.centerX() - imageWidth / 2, top,
+            destination.centerX() + imageWidth / 2, top + imageHeight)
+        canvas.drawBitmap(bitmap, sourceRect, imageDestination, paint)
     }
 
     private fun drawFrame(canvas: Canvas, frame: WorkspaceSwapAnimator.Frame) {
@@ -344,7 +351,16 @@ internal class SwapPreviewView(
             val top = (destination.centerY() - badgeSize / 2f).toInt()
             badge.setBounds(left, top, left + badgeSize, top + badgeSize)
             badge.draw(canvas)
-        } else if (bitmap != null && !bitmap.isRecycled) drawFitted(canvas, bitmap, frame.topFill, bitmapPaint)
+        } else {
+            val fresh = frame.endBitmap?.takeUnless { it.isRecycled }
+            // The new page opens below the video as the pane grows. Both pictures keep the
+            // same top/width anchor; fitting the new page by height made it shrink then jump.
+            if (fresh != null && progress > 0f) drawFitted(canvas, fresh, frame.topFill, bitmapPaint)
+            // Fade the old picture over the opaque new one, avoiding a dip through the backdrop.
+            if (fresh != null) bitmapPaint.alpha = (255 * (1f - progress)).toInt().coerceIn(0, 255)
+            if (bitmap != null && !bitmap.isRecycled) drawFitted(canvas, bitmap, frame.topFill, bitmapPaint)
+            bitmapPaint.alpha = 255
+        }
         canvas.restoreToCount(save)
         canvas.drawRoundRect(destination, cornerRadius, cornerRadius, borderPaint)
     }

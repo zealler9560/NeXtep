@@ -37,7 +37,7 @@ object LauncherTransformController {
     private var original: OriginalTransform? = null
     private val assistantRoots = WeakHashMap<View, OriginalTransform>()
     private val assistantTransforms = WeakHashMap<View, TouchCoordinateMapper.Transform>()
-    private var appliedTransform: TouchCoordinateMapper.Transform? = null
+    @Volatile private var appliedTransform: TouchCoordinateMapper.Transform? = null
     private val positionAnimators = WeakHashMap<View, ValueAnimator>()
     private val positionTargets = WeakHashMap<View, TouchCoordinateMapper.Transform>()
     // ColorOS also reads the workspace gate from its launcher animation thread.
@@ -125,6 +125,8 @@ object LauncherTransformController {
     }
 
     fun isActive(): Boolean = active
+
+    internal fun iconSurfaceTransform(): TouchCoordinateMapper.Transform? = if (active) appliedTransform else null
 
     /** Numeric root geometry only: never export window titles, view text or child content. */
     internal fun diagnostics(): String = runCatching {
