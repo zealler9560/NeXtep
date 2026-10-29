@@ -139,6 +139,8 @@ Open Panes from its Home screen icon. One page, seven groups:
 
 ## Privacy and limits
 
+- 3.0.5 improves the returning Home icon on ColorOS 17 and the handoff from pinned video to the main pane. Moving and redrawing apps can still pause briefly; smooth playback throughout every transition is not guaranteed.
+- Status-bar and driver-app touch issues on some HyperOS devices, and close animations on some OnePlus Ace6 ColorOS 16 launchers, remain under investigation and are not claimed as fixed in this release.
 - The workspace can be captured in screenshots and screen recordings.
 - With "Hide workspace tasks from Recents" on, workspace apps stay out of Recents until you leave the workspace.
 - Apps keep their own protection (payment codes, DRM video, enterprise policy); Panes does not lift it.

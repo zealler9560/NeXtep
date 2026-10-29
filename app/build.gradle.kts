@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.yishisanren.panes"
         minSdk = 35
         targetSdk = 36
-        versionCode = 117
-        versionName = "3.0.4"
+        versionCode = 118
+        versionName = "3.0.5"
         val touchDiagnostics = providers.gradleProperty("panesTouchDiagnostics").orNull == "true"
         buildConfigField("boolean", "TOUCH_DIAGNOSTICS", touchDiagnostics.toString())
         buildConfigField("String", "DIAGNOSTIC_BUILD", "\"${if (touchDiagnostics) "20261028-bars3" else "standard"}\"")
