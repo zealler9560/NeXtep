@@ -14,7 +14,7 @@
     <string name="workbench_query">输入要搜索的商品</string>
     <string name="workbench_search">搜索比价</string>
     <string name="workbench_query_empty">请输入商品名称，最多200字。</string>
-    <string name="workbench_delivery_apps">京东秒送 · 淘宝闪购 · 美团外卖</string>
+    <string name="workbench_delivery_apps">京东外卖 · 淘宝闪购 · 美团外卖</string>
     <string name="workbench_shopping_apps">拼多多 · 抖音商城 · 京东 · 淘宝</string>
     <string name="workbench_compare_failed">请留出足够的空侧窗，并检查已安装应用版本是否支持搜索入口。</string>
     <string name="workbench_compare_missing">未找到支持这些搜索入口的已安装应用。</string>

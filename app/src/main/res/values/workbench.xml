@@ -14,7 +14,7 @@
     <string name="workbench_query">Product to search for</string>
     <string name="workbench_search">Search across apps</string>
     <string name="workbench_query_empty">Enter a product name (up to 200 characters).</string>
-    <string name="workbench_delivery_apps">JD Instant · Taobao Instant · Meituan Delivery</string>
+    <string name="workbench_delivery_apps">JD Food Delivery · Taobao Instant · Meituan Delivery</string>
     <string name="workbench_shopping_apps">Pinduoduo · Douyin Mall · JD · Taobao</string>
     <string name="workbench_compare_failed">Keep enough empty side windows and check the installed app versions.</string>
     <string name="workbench_compare_missing">No installed app supports these search entries.</string>

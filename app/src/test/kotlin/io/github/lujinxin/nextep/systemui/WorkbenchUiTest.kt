@@ -221,6 +221,23 @@ class WorkbenchUiTest {
         assertThrows(IllegalArgumentException::class.java) { WorkbenchIntents.searches(WorkbenchIntents.Search.SHOPPING, "a".repeat(201)) }
     }
 
+    @Test fun deliveryFindsStandaloneMeituanAndDoesNotDuplicateBothClients() {
+        val query = "奶茶 & + # 😀"
+        val main = "com.sankuai.meituan"
+        val standalone = "com.sankuai.meituan.takeoutnew"
+        for (installed in listOf(setOf(main), setOf(standalone), setOf(main, standalone), emptySet())) {
+            val targets = WorkbenchIntents.searches(WorkbenchIntents.Search.DELIVERY, query) { it.`package` in installed }
+            val target = targets.single { it.name == "美团外卖" }.intent
+            assertEquals(if (main in installed) main else standalone, target.`package`)
+            assertEquals(query, target.data!!.getQueryParameter("query"))
+            if (main !in installed) {
+                assertEquals("meituanwaimai", target.data!!.scheme)
+                assertEquals("/search", target.data!!.path)
+            }
+            assertEquals(installed.isNotEmpty(), target.`package` in installed)
+        }
+    }
+
     @Test fun droppedTextAndFilesUseStandardTargetedReadOnlySharing() {
         val text = ContentDropCompat.intent(ClipData.newPlainText("source", "hello"), "target.app")
         assertEquals(Intent.ACTION_SEND, text.action)
@@ -243,13 +260,15 @@ class WorkbenchUiTest {
         val query = "牛奶 & #/ 500ml 😀"
         val targets = WorkbenchIntents.searches(WorkbenchIntents.Search.DELIVERY, query)
         val jd = JSONObject(targets[0].intent.data!!.getQueryParameter("params")!!)
-        assertEquals("m", jd.getString("des"))
-        val jdPage = Uri.parse(jd.getString("url"))
-        assertEquals("daojia.jd.com", jdPage.host)
-        val fragment = Uri.parse("https://daojia.jd.com${jdPage.encodedFragment}")
-        assertEquals("/IndexSearch", fragment.path)
-        assertEquals(query, fragment.getQueryParameter("keyword"))
-        assertEquals(query, fragment.getQueryParameter("real_keyword"))
+        assertEquals("京东外卖", targets[0].name)
+        assertEquals("com.jingdong.app.mall", targets[0].intent.`package`)
+        assertEquals("channelProductList", jd.getString("des"))
+        assertEquals("channelProductList", jd.getString("from"))
+        assertEquals("lbs", jd.getString("svcType"))
+        assertEquals("13376", jd.getString("channelId"))
+        assertEquals(query, jd.getString("keyword"))
+        assertEquals("1", jd.getJSONObject("extParams").getString("hourlyGoChannelStyle"))
+        assertFalse(jd.has("url"))
         val tb = targets[1].intent.data!!
         assertEquals("tb.ele.me", tb.host)
         assertEquals("/app/eleme/et-search/result", tb.path)

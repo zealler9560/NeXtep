@@ -7,11 +7,7 @@ import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import java.lang.reflect.Proxy
 
-/**
- * HyperOS runs its desktop's open and close animations through Shell's RecentsTransitionHandler,
- * the launcher moving the windows itself. While one plays, the main pane's transform rides on the
- * transition root (TaskSurfaceCompat.liftIntoTransitionRoot) until the handler reports it finished.
- */
+/** Move the pane transform above native recents animation until Shell reports completion. */
 internal object LauncherTransitionRoot {
     fun install(module: XposedModule, loader: ClassLoader) {
         val methods = loader.loadClass("com.android.wm.shell.recents.RecentsTransitionHandler").declaredMethods.filter { method ->

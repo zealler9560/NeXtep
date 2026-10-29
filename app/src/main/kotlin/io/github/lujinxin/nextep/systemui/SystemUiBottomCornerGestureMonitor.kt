@@ -98,6 +98,10 @@ object SystemUiBottomCornerGestureMonitor {
                         // The framework receiver acknowledges/recycles input even if a callback fails.
                         runCatching {
                             val event = args?.firstOrNull() as? MotionEvent
+                            if (event != null && event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) {
+                                // Diagnostics must also observe when the optional corner gesture is disabled.
+                                runCatching { io.github.lujinxin.nextep.logging.WorkspaceTouchDiagnostics.observe(context, event, canActivate()) }
+                            }
                             if (event == null || !event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) ||
                                 !SystemUiRuntime.isStatusBarGestureEnabled() ||
                                 (event.actionMasked != MotionEvent.ACTION_DOWN && !detector.isObserving)

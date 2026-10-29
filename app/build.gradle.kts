@@ -3,6 +3,7 @@ plugins {
 }
 
 android {
+    buildFeatures.buildConfig = true
     namespace = "io.github.lujinxin.nextep"
     compileSdk {
         version = release(36) {
@@ -14,8 +15,12 @@ android {
         applicationId = "io.github.yishisanren.panes"
         minSdk = 35
         targetSdk = 36
-        versionCode = 116
-        versionName = "3.0.3"
+        versionCode = 117
+        versionName = "3.0.4"
+        val touchDiagnostics = providers.gradleProperty("panesTouchDiagnostics").orNull == "true"
+        buildConfigField("boolean", "TOUCH_DIAGNOSTICS", touchDiagnostics.toString())
+        buildConfigField("String", "DIAGNOSTIC_BUILD", "\"${if (touchDiagnostics) "20261028-bars1" else "standard"}\"")
+        if (touchDiagnostics) versionNameSuffix = "-bars1"
 
     }
 
@@ -48,4 +53,9 @@ dependencies {
     implementation(libs.material)
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
+}
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    // Robolectric's Android 16+ shared-memory setup uses the JDK file-descriptor accessor.
+    jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
 }

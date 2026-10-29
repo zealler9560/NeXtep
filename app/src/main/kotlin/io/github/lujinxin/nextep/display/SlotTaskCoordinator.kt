@@ -100,6 +100,7 @@ class SlotTaskCoordinator(
                                     val timeoutMs: Long = 1_500L)
     private var deferredMove: DeferredMove? = null
     private val slotRecords = MutableList(slots.size) { SlotRecord() }
+    private val searchPause = io.github.lujinxin.nextep.workspace.SearchPauseBarrier()
     private data class LaunchRequest(
         val intent: Intent, var slot: Int?, var displayId: Int?,
         val search: Boolean = false, val emptyOnly: Boolean = false,
@@ -277,6 +278,10 @@ class SlotTaskCoordinator(
     private fun commitAppRequest(request: LaunchRequest) {
         val task = checkNotNull(request.observed)
         val index = request.slot
+        if (request.search && index != null) {
+            searchPause.protect(task.taskId, SystemClock.uptimeMillis())
+            NeXtepLog.info("search_pause", "Waiting for result content slot=$index task=${task.taskId}")
+        }
         if (index == null) {
             mainTaskPresenter.presentTask(task.taskId, geometryProvider()).getOrThrow()
         }
@@ -509,6 +514,23 @@ class SlotTaskCoordinator(
             return
         }
         val packageName = occupied.component.packageName
+        if (searchPause.contains(occupied.taskId)) {
+            if (!searchPause.shouldSample(occupied.taskId, SystemClock.uptimeMillis())) {
+                NeXtepLog.info("search_pause", "Content not confirmed; keeping live without further sampling task=${occupied.taskId}")
+                return
+            }
+            slot.sampleOutput { grid ->
+                // A delayed PixelCopy must never authorize pausing a replacement app.
+                if (!active || suspended || (slotRecords[index].state as? SlotState.Occupied)?.taskId != occupied.taskId) return@sampleOutput
+                searchPause.observe(occupied.taskId, grid, SystemClock.uptimeMillis())
+                val released = searchPause.releaseIfReady()
+                if (released.isNotEmpty()) {
+                    NeXtepLog.info("search_pause", "Result pictures stable; releasing pause protection tasks=$released")
+                    slots.indices.forEach(::schedulePauseCheck)
+                } else schedulePauseCheck(index, 1_000L)
+            }
+            return
+        }
         // A pane scrolled out of the window pauses regardless of the chosen-apps list;
         // media, a call or the wide pane still keep it live (see SlotPauseRules).
         val blocker = if (scrolledAway[index]) rules.offscreenBlocker(index, packageName)
@@ -646,6 +668,7 @@ class SlotTaskCoordinator(
         // Stop timers and settlements before parking: when a park failed, the reconciliation
         // loop kept running and re-shrank the restored foreground app behind hidden panels.
         settlement.cancel()
+        searchPause.clear()
         deferredMove = null
         // A rebind transaction still being applied would move tasks after they are parked below.
         rebindGeneration += 1
@@ -1208,6 +1231,7 @@ class SlotTaskCoordinator(
         require(sources.size in 1..5)
         val intents = sources.map { checkNotNull(normalizeExternalIntent(it)) { "No supported search Activity" } }
         val requests = intents.map { LaunchRequest(it, null, null, search = true) }
+        searchPause.clear()
         clearDesktopSelection()
         appLaunch.begin(requests, complete).getOrThrow()
     }
@@ -2768,6 +2792,7 @@ class SlotTaskCoordinator(
         slots[index].view.showState(state)
         // A pane's pause belongs to its app: a new app (or none) runs, and a new app gets its two seconds.
         val occupant = (state as? SlotState.Occupied)?.taskId
+        if (previous is SlotState.Occupied && previous.taskId != occupant) searchPause.remove(previous.taskId)
         if (previous is SlotState.Occupied && occupant == null) {
             // Past the card's fade-out.
             handler.removeCallbacks(staleFrameChecks[index])

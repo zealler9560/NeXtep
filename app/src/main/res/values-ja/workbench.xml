@@ -13,7 +13,7 @@
     <string name="workbench_query">検索する商品</string>
     <string name="workbench_search">各アプリで検索</string>
     <string name="workbench_query_empty">商品名を200文字以内で入力してください。</string>
-    <string name="workbench_delivery_apps">京東秒送 · 淘宝閃購 · 美団デリバリー</string>
+    <string name="workbench_delivery_apps">京東フードデリバリー · 淘宝閃購 · 美団デリバリー</string>
     <string name="workbench_shopping_apps">拼多多 · 抖音商城 · 京東 · 淘宝</string>
     <string name="workbench_compare_failed">空きウィンドウを確保し、アプリが検索リンクに対応しているか確認してください。</string>
     <string name="workbench_compare_missing">この検索に対応するインストール済みアプリがありません。</string>
