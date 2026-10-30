@@ -325,7 +325,7 @@ class TaskSwitcherView(
     // Internal transitions dispose the frame immediately.
     // ScreenCapture still excludes any secure layers belonging to the source app.
     /** [visibleOnly]: the part the card shows (below its crop); else the whole output, laid out like it. */
-    internal fun captureProtectedPreview(visibleOnly: Boolean = true): Bitmap? = runCatching {
+    internal fun captureProtectedPreview(visibleOnly: Boolean = true, captureScale: Float = 0.5f): Bitmap? = runCatching {
         fun shown(full: Bitmap): Bitmap {
             val rows = if (visibleOnly && outputHeight > 0) topCrop * full.height / outputHeight else 0
             if (rows <= 0 || rows >= full.height) return full
@@ -337,7 +337,7 @@ class TaskSwitcherView(
         val task = currentState as? SlotState.Occupied ?: return@runCatching null
         // The task fills this slot's canvas; that is the capture's crop.
         val crop = if (outputWidth > 0 && outputHeight > 0) Rect(0, 0, outputWidth, outputHeight) else null
-        val bitmap = io.github.lujinxin.nextep.framework.TaskSurfaceCompat.capturePreview(task.taskId, crop)
+        val bitmap = io.github.lujinxin.nextep.framework.TaskSurfaceCompat.capturePreview(task.taskId, crop, captureScale)
             ?.let(::shown) ?: return@runCatching null
         // TextureView returns its logical portrait buffer. Follow the rail's
         // actual transform so reverse-landscape drag/swap previews face correctly.

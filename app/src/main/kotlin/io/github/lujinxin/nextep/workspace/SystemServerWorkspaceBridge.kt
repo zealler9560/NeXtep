@@ -79,7 +79,11 @@ object SystemServerWorkspaceBridge {
     }
 
     internal fun publishScene(context: Context, request: WorkspaceSceneRequest) {
-        Settings.Global.putString(context.contentResolver, SCENE_KEY, request.encode())
+        // WindowState callbacks can still carry the app's Binder identity; this is system_server's
+        // own scene observation, not a settings write requested by that app.
+        val identity = android.os.Binder.clearCallingIdentity()
+        try { Settings.Global.putString(context.contentResolver, SCENE_KEY, request.encode()) }
+        finally { android.os.Binder.restoreCallingIdentity(identity) }
     }
 
     internal fun scene(context: Context): WorkspaceSceneRequest? = runCatching {

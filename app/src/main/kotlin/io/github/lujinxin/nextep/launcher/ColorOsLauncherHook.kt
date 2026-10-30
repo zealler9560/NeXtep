@@ -55,6 +55,7 @@ object ColorOsLauncherHook {
                 }
         }
         if (packageName == "com.android.launcher") {
+            HookGuard.run("launcher_icon_surface_fit") { ColorOsIconSurfaceHook.install(module, classLoader) }
             HookGuard.run("launcher_workspace_app_animation") {
                 // ColorOS AppLauncher accepts a null source View: it skips icon
                 // preloading/remote animation but retains its startup and user checks.
