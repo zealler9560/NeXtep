@@ -100,8 +100,6 @@
     <string name="apps_none_available">没有可启动的 App</string>
     <string name="about_based_on">基于 lujinxin 的 NeXtep 修改 · Apache License 2.0</string>
     <string name="about_qq_group">加入 QQ 群「格窗交流群」</string>
-    <string name="about_donate">如果格窗帮到了你，可以用微信扫码请作者喝杯咖啡。</string>
-    <string name="about_donate_description">微信赞赏收款码</string>
     <string name="section_layout">布局</string>
     <string name="section_open">打开方式</string>
     <string name="section_privacy">隐私</string>
