@@ -102,8 +102,6 @@
     <string name="apps_none_available">No apps available to launch</string>
     <string name="about_based_on">Based on NeXtep by lujinxin · Apache License 2.0</string>
     <string name="about_qq_group">Join the QQ group 格窗交流群</string>
-    <string name="about_donate">If Panes helps you, you can buy the author a coffee with WeChat Pay.</string>
-    <string name="about_donate_description">WeChat Pay donation code</string>
     <string name="section_layout">Layout</string>
     <string name="section_open">Opening the workspace</string>
     <string name="section_privacy">Privacy</string>

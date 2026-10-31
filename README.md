@@ -151,14 +151,6 @@
 
 见 [docs/BUILDING.md](docs/BUILDING.md)。功能边界与真机验证情况见 [docs/WORKBENCH.md](docs/WORKBENCH.md)，进程结构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
-## 支持作者
-
-如果格窗帮到了你，可以用微信扫码请作者喝杯咖啡。App 设置页的「关于」里也有这张码。
-
-<p align="center">
-  <img src="assets/donate-wechat.jpg" alt="微信赞赏收款码" width="240">
-</p>
-
 ## 署名与许可证
 
 格窗基于 [lujinxin 的 NeXtep](https://github.com/lujinxin/NeXtep) 修改而来，NeXtep 致敬锤子科技 Smartisan OS 的 OneStep。本仓库沿用 [Apache License 2.0](LICENSE)，第三方声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

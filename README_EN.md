@@ -151,14 +151,6 @@ Open Panes from its Home screen icon. One page, seven groups:
 
 See [docs/BUILDING.md](docs/BUILDING.md). Feature limits and device validation are recorded in [docs/WORKBENCH.md](docs/WORKBENCH.md); the process layout is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Support the author
-
-If Panes helps you, you can buy the author a coffee with WeChat Pay. The same code is under About in the app's settings.
-
-<p align="center">
-  <img src="assets/donate-wechat.jpg" alt="WeChat Pay donation code" width="240">
-</p>
-
 ## Credits and licence
 
 Panes is a modified fork of [NeXtep by lujinxin](https://github.com/lujinxin/NeXtep), which itself pays tribute to OneStep in Smartisan OS. The repository keeps the [Apache License 2.0](LICENSE); third-party notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

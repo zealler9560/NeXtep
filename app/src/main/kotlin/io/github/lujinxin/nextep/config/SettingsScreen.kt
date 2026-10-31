@@ -189,16 +189,6 @@ object SettingsScreen {
                 insetBottom = dp(activity, 4)
                 setOnClickListener { openQqGroup(activity) }
             }, matchWidth().apply { topMargin = dp(activity, 12) })
-            addView(sectionDescription(activity, activity.getString(R.string.about_donate)),
-                matchWidth().apply { topMargin = dp(activity, 12) })
-            addView(ImageView(activity).apply {
-                setImageResource(R.drawable.donate_wechat)
-                adjustViewBounds = true
-                contentDescription = activity.getString(R.string.about_donate_description)
-            }, LinearLayout.LayoutParams(dp(activity, 200), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(activity, 8)
-            })
         })
     }
 
